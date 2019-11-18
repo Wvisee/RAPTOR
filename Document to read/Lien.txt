@@ -1,3 +1,0 @@
-https://medium.com/@nusenu/how-vulnerable-is-the-tor-network-to-bgp-hijacking-attacks-56d3b2ebfd92
-https://gitweb.torproject.org/torspec.git/tree/
-https://www.apnic.net/get-ip/faqs/rpki/
