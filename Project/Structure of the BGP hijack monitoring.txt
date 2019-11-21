@@ -1,0 +1,24 @@
+Initial solution:
+
+A. Take all ip of guard and exit relay => List /24 of these + all the sub-prefixes up to the length /24 (data collection)
+B. We pull a BGP stream with the tool "BGPStream" (Open Source Framework)
+C. We filter the BGP data with Prefixes of Guard and exit relay.
+D. We do a IP to ASN mappings from Team Cymru.
+E. Detecting Anymalities:
+E1. Origin AS Check : We look if the BGP update is valid. If not we flag the BGP update.
+E2. Analytics-based detection :
+E2a. Frequency : if AS announce a prefix rarely or for the first time it is suspicious.
+E2b. Time : Hijack stays a short amount of time. If it's below a threshold it's suspicious.
+
+Add:
+
+D. Use of Team Cymru + ROA repository
+Anaytics : 
+- Make an order of trustness AS. Trustness AS are less suspicious to launch an attack.
+
+How to do it:
+
+A. IP : https://collector.torproject.org/recent/relay-descriptors/consensuses
+   See if got correct amount of data : https://metrics.torproject.org/relayflags.html
+B. BGPStream : https://bgpstream.caida.org/download
+C. Team Cymru : https://www.team-cymru.com/IP-ASN-mapping.html
