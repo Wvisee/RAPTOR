@@ -1,6 +1,6 @@
 Initial solution:
 
-A. Take all ip of guard and exit relay => List /24 of these + all the sub-prefixes up to the length /24 (data collection)
+A. Take all ip of guard and exit relay => List /24 of these
 B. We pull a BGP stream with the tool "BGPStream" (Open Source Framework)
 C. We filter the BGP data with Prefixes of Guard and exit relay.
 D. We do a IP to ASN mappings from Team Cymru.
@@ -13,7 +13,7 @@ E2b. Time : Hijack stays a short amount of time. If it's below a threshold it's 
 Add:
 
 D. Use of Team Cymru + ROA repository
-Anaytics : 
+Anaytics :
 - Make an order of trustness AS. Trustness AS are less suspicious to launch an attack.
 
 How to do it:

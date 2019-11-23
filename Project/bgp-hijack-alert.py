@@ -2,8 +2,6 @@
 import urllib.request
 import os
 
-print("begin")
-
 #download consensuces.html which list file by hours of relay information.
 url = 'https://collector.torproject.org/recent/relay-descriptors/consensuses/'
 urllib.request.urlretrieve(url, '../Project/consensuces.html')
@@ -17,8 +15,8 @@ os.remove("consensuces.html")
 #download data about current relay running.
 url = 'https://collector.torproject.org/recent/relay-descriptors/consensuses/'+last_line
 urllib.request.urlretrieve(url, '../Project/ip_relay_data')
-#filter file to get all ip of guard/exit relay in file iplist.
-data= open("iplist", "w+")
+#filter file to get all ip prefix of guard/exit relay.
+listofprefix = []
 with open("ip_relay_data","r") as fin:
     is_in_block=False
     ip=0
@@ -32,7 +30,13 @@ with open("ip_relay_data","r") as fin:
             if "Guard" in tab: ok=True
             if "Exit" in tab: ok=True
             if ok:
-                data.write(ip+"\n")
+                prefix=ip.split('.')
+                prefix=prefix[0]+"."+prefix[1]+"."+prefix[2]
+                if prefix not in listofprefix:
+                    listofprefix.append(prefix)
             is_in_block=False
-f.close()
+#Write prefix in file iplist.
+with open("iplist", "w+") as f:
+    for item in listofprefix:
+        f.write("%s\n" % item)
 os.remove("ip_relay_data")
