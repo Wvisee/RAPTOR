@@ -26,3 +26,6 @@ C. Team Cymru : https://www.team-cymru.com/IP-ASN-mapping.html
 --------------------------------------------------------
 Website:
   -Graph of number of BGP_hijack with x=time and y=number
+
+réunion: - fiabilité des données ?
+	 - ecrire state of art

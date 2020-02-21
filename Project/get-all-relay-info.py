@@ -4,6 +4,7 @@ import os
 import fileinput
 import sys
 from progress.bar import Bar
+from current_bgp_hijack import *
 #function to replace a string in file by another one.
 def replaceAll(file,searchExp,replaceExp):
     for line in fileinput.input(file, inplace=1):
@@ -60,10 +61,39 @@ os.remove("tmp/all-concensuses.html")
 ################################################################
 #2. Untar Downloaded concensuses + download recent concensuses #
 ################################################################
+
 number_of_tar_file = os.popen("ls -1 tor-consensuses-tar | wc -l").read()
-bar = Bar('Processing', max=int(number_of_tar_file))
+
+tar_list=[] #sort the tar file in the directory
 for filename in os.listdir("tor-consensuses-tar"):
+    tar_list.append(filename)
+tar_list.sort()
+
+bar = Bar('Processing\n', max=int(number_of_tar_file))
+result = open("tmp/result", 'a')
+for filename in tar_list:
     if filename.endswith(".tar.xz"):
         os.system("tar -xf tor-consensuses-tar/"+str(filename)+" -C tor-consensuses")
+        filename= str(filename).split('.')
+        filename= filename[0]
+
+        day_list=[] #sort the day file in the tar-directory
+        for dayname in os.listdir("tor-consensuses/"+str(filename)):
+            day_list.append(dayname)
+        day_list.sort()
+
+        for day in day_list:
+
+            hour_list=[] #sort the hour file in the day-directory
+            for hourname in os.listdir("tor-consensuses/"+str(filename)+"/"+day):
+                hour_list.append(hourname)
+            hour_list.sort()
+
+            for hour in hour_list:
+                print(hour)
+                hijack=get_bgp_hijack("tor-consensuses/"+str(filename)+"/"+str(day)+"/"+str(hour))
+                for x in hijack:
+                    result.write(str(hour)+" : "+x+" : "+str(hijack[x])+"\n")
         bar.next()
+        os.system("rm -rf tor-consensuses/"+str(filename))
 bar.finish()
