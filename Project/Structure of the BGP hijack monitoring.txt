@@ -29,3 +29,5 @@ Website:
 
 réunion: - fiabilité des données ?
 	 - ecrire state of art
+
+Doc about how concensus is made :https://jordan-wright.com/blog/2015/05/14/how-tor-works-part-three-the-consensus/
