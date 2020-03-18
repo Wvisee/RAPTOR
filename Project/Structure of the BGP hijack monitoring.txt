@@ -31,3 +31,65 @@ réunion: - fiabilité des données ?
 	 - ecrire state of art
 
 Doc about how concensus is made :https://jordan-wright.com/blog/2015/05/14/how-tor-works-part-three-the-consensus/
+
+Team cympru fiability : "Each of the services is based on the same BGP feeds from 50+ BGP peers, and is updated at 4 hour intervals."
+BgpStream : - Why isn't a grouped BGP stream ? (routeviews, ripe ncc)
+if relay is hijack from where in the world was ok ?
+papier BGP(papier) hijack(Raptor) semaine prochaine explication (pas forcement redaction, peut-être slides)
+Mercredi matin 10h45 (04/03)
+-----------------------------------------------------
+Hello William,
+
+To be sure we all have the goals discussed today in mind:
+
+The goal of this Master Thesis a tool capable of:
+
+- Giving all relays a score to hijack resilience. This score depends on
+the location of the peer connecting to the relay. The location can be at
+the AS level, or/and the country level.
+
+- We expect this tool to be able to continuously monitor the Internet
+and the Tor network, and to store the information for later usage (e.g.,
+processing and view on a website).
+
+- The tool should also be able, in duality to the resilience score, to
+detect live BGP anomalies. A nice to have would be classification of
+those anomalies.
+
+Because this tool computes its metrics and anomaly detection based on
+third-party inputs, a precise understanding of the third-party inputs
+must be demonstrated. How they are gathered, by whom? Are they trusted?
+Can we defend against malicious input to the tool? All those questions
+should be covered in the Master Thesis, and probably more.
+
+Before resuming the achievement of these goals, we would like next week
+to receive explanation about BGP Hijack in details, and that you can
+explain to us the literature on the subject.
+
+I hope it helps you to structure your work.
+
+Best,
+
+Florentin & Ramin
+------------------------------------------------------
+A score to each relay on hijack resilience : Does the AS will accept the BGP hijack (BGP update with )
+
+BGPplay => cartographie d'internet ripe ncc
+For next week => make a code to give all relays a score to hijack resilience. (When an Hijack, Internet might be split in 2 => from where it is Hijack and from where it is not)
+1. with BGPStream => make a cartography of internet (Prefix + AS Path) (from the beginning) (Compare output with same type of tools that already exist)
+
+Graph Database : NEO4j (Node = ASN); inside => LIST[Prefix]= AS PATH
+
+How to know if AS will be resilient to hijack ? (will be an estimation) (Simulate the decision process standart) Rely on AS PATH
+Do a compute on demande : AS that Update prefix hijack => what happend
+
+% would be the portion of the AS that would be Hijack on total of AS.
+
+=> Use all collector available
+=> Make a topology of the network of AS with the AS Path received (We can know the links) + Each node contain AS Path to prefix
+=> On demand : From which AS we launch a same prefix hijack, look how much AS will accept the update (we decide it by the AS Path)
+
+https://towardsdatascience.com/python-interactive-network-visualization-using-networkx-plotly-and-dash-e44749161ed7
+
+time to live dans les messages. bgp ?
+try to groupe the withdraw so all data access only once

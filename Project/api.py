@@ -4,19 +4,27 @@ import stem.descriptor.collector
 import os
 import pybgpstream
 
-yesterday = datetime.datetime.utcnow() - datetime.timedelta(days = 1)
-twodaysago = datetime.datetime.utcnow() - datetime.timedelta(days = 2)
+##################################
+#1. Get list of IP of Tor relays #
+##################################
+print("Get IP of tor guard and exit relay")
+
+before = datetime.datetime.utcnow() - datetime.timedelta(hours = 5)
+after = datetime.datetime.utcnow() - datetime.timedelta(hours = 4)
 
 dict_ip_date = {}
-
-for desc in stem.descriptor.collector.get_consensus(start = twodaysago,end=yesterday):
+i = 0
+for desc in stem.descriptor.collector.get_consensus(start = before,end=after):
     if ("Guard" in desc.flags) or ("Exit" in desc.flags):
         dict_ip_date[desc.fingerprint] = desc
+    i=i+1
 
+print(i)
+print(len(dict_ip_date))
 #############################################
 #2. Make a Origin Check with Team Cymru tool#
 #############################################
-#print("Doing the IP-ASN mapping")
+print("Doing the IP-ASN mapping")
 
 prefix_to_AS = {}
 
@@ -27,6 +35,7 @@ for fingerprint,desc in dict_ip_date.items():
     file_ip_date.write(desc.address+" "+str(desc.published)+"\n")
 file_ip_date.write("end\n")
 file_ip_date.close()
+
 os.system("netcat whois.cymru.com 43 < tmp/file_ip_date | sort -n > tmp/file_team_cymru")
 
 file_ip_date = open("tmp/file_team_cymru", 'r')
@@ -38,20 +47,20 @@ for x in file_ip_date:
 prefix_to_AS.pop('NA', None) #not always found
 
 os.remove("tmp/file_ip_date")
-os.remove("tmp/file_team_cymru")
+#os.remove("tmp/file_team_cymru")
 
 ####################################################
 #3. Take a stream of BGP update of prefix of relays#
 ####################################################
-#print("Doing an origin check to see BGP hijack")
+print("Doing an origin check to see BGP hijack")
 
 prefix_to_AS.pop('NA', None) #not always found
 
 stream = pybgpstream.BGPStream(
-    from_time=str(twodaysago).split(".")[0],until_time=str(yesterday).split(".")[0],
-    collectors=["route-views2", "rrc00"],
+    from_time=str(before),until_time=str(after),
+    collectors=["route-views2"],
     record_type="ribs",
-    filter="prefix less "+' '.join(list(prefix_to_AS))+"" #we filter with the prefix relay
+    filter="prefix less "+str(' '.join(list(prefix_to_AS)))+"" #we filter with the prefix relay
 )
 
 bgp_hijack_list={}

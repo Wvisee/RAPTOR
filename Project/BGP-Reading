@@ -1,0 +1,88 @@
+BGP:
+1.)
+https://www.cloudflare.com/learning/security/glossary/what-is-bgp/
+
+Internet is a network of networks.
+AS (Autonomous System) advertise route by BGP to other AS.
+external BGP (communication AS to AS) vs Internal BGP (communication inside a AS).
+Break in the internet:
+- In 2004 a Turkish Internet service provider (ISP) called TTNet accidentally advertised bad BGP routes to its neighbors. These routes claimed that TTNet itself was the best destination for all traffic on the Internet: 1-day crisis
+- in 2008 a Pakistani ISP attempted to use a BGP route to block Pakistani users from visiting YouTube. The ISP then accidentally advertised these routes with its neighboring AS’s and the route quickly spread across the Internet’s BGP network.
+- April of 2018, attackers deliberately created bad BGP routes to redirect traffic that was meant for Amazon’s DNS service. The attackers were able to steal over $100,000 worth of cryptocurrency by redirecting this traffic to themselves.
+BGP relies on trust
+While there have been a number of ambitious proposals intended to make BGP more secure, these are hard to implement because they would require every autonomous system to simultaneously update their behavior.
+
+2.)
+https://fr.wikipedia.org/wiki/Border_Gateway_Protocol
+
+BGP works on TCP/IP (port 179) so it's in the application layer.
+Exterior Gateway Protocol is the predecessor of BGP.
+BGP = path vector protocol.
+First version on the internet is BGP version 4.
+If eBGP link fail: all prefix received from this connection is deleted.
+To announce the prefix to all routers of an AS, we use an Interior gateway protocol (IGP) generaly OSPF or IS-IS
+
+Different type of message exchanged:
+- OPEN:  First message send with ASN and router ID + capacity
+- KEEPALIVE: Send each 30 sec, if after 90 sec no update or keepalive msg then session is closed.
+- UPDATE: announcement or delete of route.
+- NOTIFICATION: message after bgp session when error.
+- Route-Refresh: ask/reannonce certain prefix after modification of the filter politics.
+
+Finite state machine of a BGP router:
+-Idle : do nothing until something launch the BGP processus. => connect
+-Connect - active : do a tcp connection on port 179 and send OPEN => OpenSent
+-OpenSent : OPEN is send and wait for the return OPEN. if no error, send KEEPALIVE => OpenConfirm
+            if error, send NOTIFICATION => idle
+-OpenConfirm: Wait for the return KEEPALIVE => Established, if error send NOTIFICATION => idle
+- Established: UPDATE and KEEPALIVE can be exchange, if NOTIFICATION => idle
+
+Attributs:
+4 types of attributs in bgp:
+1. Well-Known Mandatory(WM): must be taken in account and propagate
+2. Well-Known Discretionary (WD): must be taken in account and must not be propagate
+3. Optional Transitive (OT): must not be taken in account but must be propagate
+4. Optional Nontransitive (ON): Must no be taken in account and must not be propagate
+
+AS Path 	WM 	Liste ordonnée des systèmes autonomes traversés => disable loop (if AS see his ASN in path it reject)
+Next Hop 	WM 	Adresse IP du voisin BGP
+Origin 	WM 	Origine de la route (IGP, EGP ou Incomplete)
+Local Preference 	WD 	Métrique destinée aux routeurs internes en vue de préférer certaines routes
+Atomic Aggregate 	WD 	Si agrégation "atomique" (supprimant les AS agrégés): Liste des AS supprimés après l'agrégation
+Aggregator 	OT 	Si agrégation: Identificateur et AS du routeur qui a réalisé l'agrégation
+Community 	OT 	Marquage de route
+Cluster ID 	ON 	Identificateur du cluster de route reflector
+Multiple Exit Discriminator (MED) 	ON 	Métrique destinée au départ aux routeurs externes en vue de leur faire préférer certains routes (utilisable finalement plus largement) smaller is better
+Originator ID 	ON 	Identificateur apposé par le route reflector pour indiquer le router ID du routeur d'origine de la route
+Weight 	O(N) 	Extension Cisco en vue de préférer localement certains voisins, n'est jamais transmise aux voisins
+
+Decision making:
+
+1 	Weight 	Préférence administrative locale 	la plus élevée (only cisco)
+2 	LOCAL_PREF 	Préférence à l'intérieur d'un AS 	la plus élevée
+3 	Self-Originated 	Préférence des réseaux dont l'origine est ce routeur 	vrai > faux
+4 	AS_PATH 	Préférence du chemin avec les moins d'AS traversés 	le plus court
+5 	ORIGIN 	Préférence du chemin en fonction de la façon dont ils sont connus par le routeur d'origine 	IGP > EGP > Incomplete
+6 	MULTI_EXIT_DISC 	Préférence en fonction de la métrique annoncée par l'AS d'origine 	la plus faible
+7 	External 	Préférence des routes eBGP sur les routes iBGP 	eBGP > iBGP (patate chaude)
+8 	IGP Cost 	Métrique dans l'IGP du chemin vers le NEXT_HOP 	la plus faible
+9 	eBGP Peering 	Préfère les routes les plus stables 	la plus ancienne
+10 	Router ID 	Départage en fonction de l'identifiant du routeur 	la plus faible
+
+route reflector : router that is connected to all IBGP router so they can be synchronised without doing a full mesh.
+big AS can be divided in multiple smaller one (called confederation) each "small AS" communicate via EBGP and have a route reflector.
+
+before ASN on 16bits now on 32 bits
+
+3.)
+https://www.noction.com/blog/bgp-med-attribute
+
+MED is non-transitive : So if AS 10 adds the MED attribute to a prefix and then sends an update with that prefix to AS 20 and AS 20 sends it to AS 30, AS 20 will see the MED value that AS 10 inserted, but AS 30 won’t.
+MED : the MED is only considered when two or more routes are received from the same neighboring AS. If routes are received from different neighbor ASes, the MED is not compared and BGP looks at the tie breaking rules instead.
+
+https://www.noction.com/blog/bgp-next-hop
+The update message carries three types of information: a list of withdrawn routes, a set of path attributes and “network layer reachability information” (NLRI).
+The NLRI field is simply a list of prefixes that are advertised as being reachable, and the path attributes field holds information about those advertised prefixes.
+Path attributes are of 4 types : WM,WD,OT,ON
+When looking at a single router that has a BGP session towards another router in a different autonomous system — i.e., an external BGP or eBGP session—the next hop attribute is usually very boring: it simply contains the IP address of the neighboring router.
+Then for IBGP routers, We will use IGP to let every one inside an AS knows where the next-Hop is 

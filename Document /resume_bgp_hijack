@@ -1,0 +1,39 @@
+1. Introduction
+
+BGP => advertise set of IP prefixes it manages + set of IP prefixes already forwarded.
+Malicious AS => announcing others IP prefix + forging AS paths.
+BGP hijacking has been a problem over 20 years.
+If prefix hijacked we can : blackhole, intercept traffic, (impersonate the legitimate receiver of the traffic), use the prefix for spamming.
+
+Main Work : distinguishing 4 types of BGP hijack events:
+Typos, prepending mistakes => more a misconfiguration or human error.
+origin changes and forged AS paths => more a malicious hijacking event.
+
+AS hegemony to detect forged AS path: 2 types local+global
+They used BGPMon and BGPStream.
+With BGPMon they got 4%,1%,2% of typos, prepend mistakes and BGP hijacking with a forged AS path.
+
+2. Background: Anomalous BGP annoucements and causes:
+
+Route Origin Change : An AS announce a prefix that it doesn't own.
+
+AS-Path manipulation: ex: malicious AS6said he is next to AS1(he is not) and avertise path AS6-AS1 so he get the hijack and evade an origin authentification.
+
+Typos in ASN or prefixes: Network operator must type the ASNs and prefixes to the router configuration, if the operator does a typing mistake => "hijack"
+
+Wrong AS path prepend: AS prepending is when an AS add multiple times an ASN to a path so that the advertised path becomes less desirable due to length. Prepending mistakes can happen if AS write "3 47868" instead of "47868 47868 47868" or by adding a wrong ASN ex: 48868 instead of 47868.
+
+3. Datasets
+
+Use datasets of likely typos(Dyn blog, BGPMon), potentially malicious hijacks (Dyn blog),
+datasets completed with CAIDA BGPStream=> IA(machine learning)
+
+4. Methodology
+
+AS hegemony is a metric that quantifies the likelihood of an AS to lie on paths toward certain destination IP prefixes.
+
+Global AS hegemony = is computed with paths to all IP prefixes by the BGP viewpoints.
+ASes with a large value stand for large transit networks that are commonly used to reach any host on the Internet.
+Local AS hegemony = is computed with paths from all BGP viewpoints towards only one origin AS.
+High values stand for ASes that are commonly used to reach the given origin AS.
+

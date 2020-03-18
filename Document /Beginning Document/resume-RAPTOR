@@ -1,0 +1,42 @@
+2 ways for an adversary to gain visibility into Tor traffic:
+- compromising/owning enough Tor relays
+- be on the forwarding path for Tor traffic
+
+AS can easily eavesdrop on portion of all links.
+
+3 Attacks:
+- Asymetric of internet: path from client to server can be different from server to client.
+It increases the chance of an AS to observe at least one direction of both communication endpoints.
+- Natural churn in Internet routing. BGP paths change over time. AS can see additionnal traffic.
+- BGP hijack + BGP interception attacks : exploit the inherent insecurity of internet routing.
+
+The correlation of 2 traffic flow is done by analysing the packet timing and packet size.
+
+asymmetric traffic analysis : novel form of end-to-end timing analysis.
+=> We can correlate a flow of acknowledgment with a tcp data flow.
+=> same with ack to ack 
+=> same with data to data
+
+SSL/TLS leaves the TCP header unencrypted => we look at TCP sequence number and TCP ack field.
++ correlation with the time.
+
+Natural churn: anonymity can degrade over time: (more AS see connection when churn happend)
+
+'' : an AS can break links to make traffics reroute to another AS that could do a correlation attack.
+
+BGP hijack : Advertising a prefix as its own will causes a fraction of Internet traffic destined to the prefix to be captured by the adversary.
+
+Tor guard relay is an attractive target for BGP hijack because they know client IP.
+
+We note that in a prefix-hijack attack, the captured
+traffic is blackholed, and the client’s connection to the
+guard is eventually dropped.
+
+BGP interception attack, that allows adversaries to perform exact deanonymization of Tor users without loosing the connection (no blackhole)
+
+A prefix interception attack allows the malicious AS to become an intermediate AS in the path towards the guard relay
+
+BGP hijack => AS Path: AS1
+BGP interception => AS Path: AS1 AS2 AS3 ASorigin
+
+BGP interception attacks can perform exact deanonymization of Tor clients
