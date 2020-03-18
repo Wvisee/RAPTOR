@@ -93,3 +93,5 @@ https://towardsdatascience.com/python-interactive-network-visualization-using-ne
 
 time to live dans les messages. bgp ?
 try to groupe the withdraw so all data access only once
+#############################################################
+Réunion teams 18/03: temps réel = tout les 1j (périodicité) : Voir si BGPStream archive : écrire sur RAPTOR + papier given : look DIAL pour structure mémoire : avoir un code qui donne des résultats même si boiteux 
