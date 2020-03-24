@@ -10,7 +10,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import ipaddress
 import pybgpstream
-import random
+from random import *
 
 ############################################################
 #   Download + update tar archives consensus of tor relays #
@@ -213,38 +213,85 @@ def internet_mapping(hash_map,date):
 #   Calculate Resilient Score of Tor Relays  #
 ##############################################
 
-def take_10_random_AS(DB):
-    lenght = len(DB) #number of AS
-    list = []
+def take_10_random_AS(G):
+    lenght = len(G) #number of AS
+    list_of_as = []
     count = 0
     if lenght >= 10:
         while count<10:
-            t = random.choice(list(DB.keys()))
-            if t not in list:
+            t = choice(list(G.nodes()))
+            if t not in list_of_as:
                 count = count + 1
-                list.append(t)
-        return list
+                list_of_as.append(t)
+        return list_of_as
     else:
-        for AS in DB:
-            list.append(AS)
-        return list
+        for AS in G.nodes():
+            list_of_as.append(AS)
+        return list_of_as
 
 def is_it_best_route(ases,prefix,DB):
-    ## TODO:
-    return False
+    AS_prefix_list = DB[ases[0]]
+    path_list = AS_prefix_list[prefix]
+    longest=9999999999999999999 #Normaly no path should be bigger than this.
+    for i in path_list:
+        if len(i) < longest:
+            longest=len(i)
+    return longest==len(ases)
 
+#bfs
 def advertise_prefix(ases,prefix,Graph,DB):
-    advertise_prefix2(ases,prefix,Graph,DB)
+    #advertise_prefix2(ases,prefix,Graph,DB)
+    queue = []     #Initialize a queue
+    visited = []
+    queue.append([ases[0],ases])
+    visited.append(ases[0])
+
+    while queue:
+        s = queue.pop(0)
+        add_data_to_db_one_as(s[1],prefix,DB)
+        for neighbour in Graph.neighbors(s[0]):
+            if neighbour not in visited:
+                x = ases.copy()
+                x.insert(0, neighbour)
+                visited.append(neighbour)
+                queue.append([neighbour,x])
     return DB
 
+'''
 def advertise_prefix2(ases,prefix,Graph,DB):
     add_data_to_db_one_as(ases,prefix,DB)
     if is_it_best_route(ases,prefix,DB):
-        for i in Graph.neighbors(AS):
-            compute_score(ases.insert(0, i),prefix,Graph,DB)
+        for i in Graph.neighbors(ases[0]):
+            x = ases.copy()
+            x.insert(0, i)
+            advertise_prefix2(x,prefix,Graph,DB)
+'''
 
-def compute_score(DB2):
-    return 0
+def compute_score(Wrong_AS,prefix,DB2,G):
+    #iter on all node to get asn
+    #go to table and look which route is prefer
+    #in 2 var
+    hijacked = 0
+    for i in G.nodes():
+        if DB2.get(i):
+            prefix_list = DB2[i]
+            if prefix_list.get(prefix):
+                path_list = prefix_list[prefix]
+                shortest = 4294967296
+                for x in path_list:
+                    if len(x) < shortest:
+                        shortest=len(x)
+                list_path_same_length = []
+                for x in path_list:
+                    if len(x) == shortest:
+                        list_path_same_length.append(x)
+                is_hijacked = True
+                for x in list_path_same_length:
+                    if x[len(x)-1] != Wrong_AS:
+                        is_hijacked = False
+                if is_hijacked:
+                    hijacked=hijacked+1
+    return hijacked/len(G)
 
 
 def computation_resilient_score_tor_relay(graph_db):
@@ -258,10 +305,10 @@ def computation_resilient_score_tor_relay(graph_db):
                 list_prefix_in_DB.append(prefix)
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
-        random_AS_10 = take_10_random_AS(DB) #take 10 random AS => they will hijack the prefix
+        random_AS_10 = take_10_random_AS(Graph) #take 10 random AS => they will hijack the prefix
         score=0
         for AS in random_AS_10:
             DB2 = advertise_prefix([AS],prefix,Graph,DB.copy())
-            score = score + compute_score(DB2)
+            score = score + compute_score(AS,prefix,DB2,Graph)
         final_score = score/10
         print("prefix : "+str(prefix)+" , score : "+str(final_score))

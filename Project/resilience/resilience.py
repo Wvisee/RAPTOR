@@ -48,11 +48,9 @@ for filename in tar_list:
                 list_ip4_ip6=extract_tor_ip("tor-consensuses/"+str(filename)+"/"+str(day)+"/"+str(hour))
                 prefix_hash_map=hash_map_all_prefix(list_ip4_ip6)
                 internetgraph_routingdb= internet_mapping(prefix_hash_map,str(hour))
+                #print(internetgraph_routingdb[1])
                 resilient_score_tor_relay = computation_resilient_score_tor_relay(internetgraph_routingdb)
 
-                break
-            break
-        break
         bar.next()
         os.system("rm -rf tor-consensuses/"+str(filename))
 bar.finish()
