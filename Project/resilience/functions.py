@@ -67,6 +67,82 @@ def update_tor_archive():
     f.close()
     os.remove("../tmp/all-concensuses.html")
 
+############################################################
+#   Return a sorted list of all BGP archives url           #
+############################################################
+
+def get_update_bgp_stack_archive():
+    #load stack
+    load_stack=[]
+    f1= open("Data/BGP_url_stack","r")
+    for i in f1:
+        load_stack.append(i.rstrip("\n"))
+    #get only last line
+    f1.close()
+    f1= open("Data/BGP_url_stack","r")
+    #get only last line
+    last_line = f1.readlines()[-1]
+    f1.close()
+    x = last_line.split("/")
+    last_date_archive = x[5][6:19]
+
+    #download list of collector
+    url = 'https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/ris-raw-data'
+    urllib.request.urlretrieve(url, '../tmp/ripe_ncc_collector.html')
+
+    list_url=[]
+    f1= open("../tmp/ripe_ncc_collector.html","r")
+    for i in f1:
+        if "href=\"http://data.ris.ripe.net/rrc" in i:
+            i = i.split("href=\"http://data.ris.ripe.net/rrc")
+            z = str(i[1][0])+str(i[1][1])
+            url_collector = "http://data.ris.ripe.net/rrc"+z
+            urllib.request.urlretrieve(url_collector, '../tmp/ripe_ncc_collector_'+z+'.html')
+            f2= open('../tmp/ripe_ncc_collector_'+z+'.html',"r")
+            list_of_date=[]
+            for l in f2:
+                if "href=" in l:
+                    var = l.split("href=\"")[1]
+                    date = var[0:7]
+                    boo = var[0].isdigit()
+                    if boo and date>=(last_date_archive[0:4]+"."+last_date_archive[4:6]):
+                        list_of_date.append(date)
+            f2.close()
+            os.remove('../tmp/ripe_ncc_collector_'+z+'.html')
+            list_of_date.sort()
+            for date in list_of_date:
+                url = 'http://data.ris.ripe.net/rrc'+z+'/'+date+"/"
+                urllib.request.urlretrieve(url, '../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
+                f3 = open('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html','r')
+                for m in f3:
+                    if len(m)==229:
+                        if m[84]=="b": #it means that it is a bview (BGP table)
+                            name_of_archive = m[84:106]
+                            name_of_archive2 = name_of_archive[6:19]
+                            if name_of_archive2 >= last_date_archive:
+                                url = 'http://data.ris.ripe.net/rrc'+z+'/'+date+"/"+name_of_archive
+                                list_url.append(url)
+
+                                #urllib.request.urlretrieve(url, 'BGP_Archives/ripe-ncc/rcc'+z+'/'+date+'/'+name_of_archive+"")
+                        else:
+                            break
+                f3.close()
+                os.remove('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
+    f1.close()
+    os.remove("../tmp/ripe_ncc_collector.html")
+
+    for i in list_url:
+        if i not in load_stack:
+            load_stack.append(i)
+
+    load_stack.sort(key = lambda x: x.split("/")[5]) #sort by the name of the archive
+    log = open("Data/BGP_url_stack",'w')
+    for i in load_stack:
+        log.write(i+"\n")
+    log.close()
+
+    return load_stack
+
 ##############################################################
 #  extract tor ip and put all the possible prefix in hashmap #
 ##############################################################

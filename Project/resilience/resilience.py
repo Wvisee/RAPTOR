@@ -12,10 +12,16 @@ from functions import *
 
 update_tor_archive()
 
-##################################
-#2. Untar Downloaded concensuses #
-##################################
+#####################################
+#2.   Update the BGP url stack      #
+#####################################
 
+url_stack = get_update_bgp_stack_archive()
+
+##################################
+#3.   Calculate the resilience   #
+##################################
+'''
 number_of_tar_file = os.popen("ls -1 tor-consensuses-tar | wc -l").read()
 
 tar_list=[] #sort the tar file in the directory
@@ -54,3 +60,4 @@ for filename in tar_list:
         bar.next()
         os.system("rm -rf tor-consensuses/"+str(filename))
 bar.finish()
+'''
