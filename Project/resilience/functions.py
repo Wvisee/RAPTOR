@@ -11,6 +11,24 @@ import matplotlib.pyplot as plt
 import ipaddress
 import pybgpstream
 from random import *
+import subprocess
+
+####################
+#  Global Variable #
+####################
+
+G = nx.Graph()  #graph of internet
+ASN_TO_RIB = {} #dict of dict to store BGP table of ASes
+
+########################
+# Management functions #
+########################
+
+def clean():
+    if len(os.listdir("BGP_Archives")) != 0:
+        os.system("rm BGP_Archives/*")
+    if len(os.listdir("../tmp")) != 0:
+        os.system("rm ../tmp/*")
 
 ############################################################
 #   Download + update tar archives consensus of tor relays #
@@ -72,19 +90,27 @@ def update_tor_archive():
 ############################################################
 
 def get_update_bgp_stack_archive():
+    x = get_update_bgp_url_RCC()
+    #y = get_update_bgp_url_ROUTEVIEW()
+    return x
+
+def get_update_bgp_url_RCC():
     #load stack
     load_stack=[]
-    f1= open("Data/BGP_url_stack","r")
+    f1= open("Data/BGP_url_stack_rcc","r")
     for i in f1:
         load_stack.append(i.rstrip("\n"))
     #get only last line
     f1.close()
-    f1= open("Data/BGP_url_stack","r")
+    return load_stack
+    f1= open("Data/BGP_url_stack_rcc","r")
     #get only last line
     last_line = f1.readlines()[-1]
     f1.close()
     x = last_line.split("/")
-    last_date_archive = x[5][6:19]
+    last_date_archive = x[5][8:16]
+    last_date_archive_year_month_day = last_date_archive
+    last_date_archive_year_month = last_date_archive[0:4]+"."+last_date_archive[4:6]
 
     #download list of collector
     url = 'https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/ris-raw-data'
@@ -105,7 +131,8 @@ def get_update_bgp_stack_archive():
                     var = l.split("href=\"")[1]
                     date = var[0:7]
                     boo = var[0].isdigit()
-                    if boo and date>=(last_date_archive[0:4]+"."+last_date_archive[4:6]):
+
+                    if boo and date>=last_date_archive_year_month:
                         list_of_date.append(date)
             f2.close()
             os.remove('../tmp/ripe_ncc_collector_'+z+'.html')
@@ -115,15 +142,13 @@ def get_update_bgp_stack_archive():
                 urllib.request.urlretrieve(url, '../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
                 f3 = open('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html','r')
                 for m in f3:
-                    if len(m)==229:
-                        if m[84]=="b": #it means that it is a bview (BGP table)
-                            name_of_archive = m[84:106]
-                            name_of_archive2 = name_of_archive[6:19]
-                            if name_of_archive2 >= last_date_archive:
+                    if len(m)==233:
+                        if m[84]=="u": #it means that it is an update
+                            name_of_archive = m[84:108]
+                            name_of_archive2 = name_of_archive[8:16]
+                            if name_of_archive2 >= last_date_archive_year_month_day:
                                 url = 'http://data.ris.ripe.net/rrc'+z+'/'+date+"/"+name_of_archive
                                 list_url.append(url)
-
-                                #urllib.request.urlretrieve(url, 'BGP_Archives/ripe-ncc/rcc'+z+'/'+date+'/'+name_of_archive+"")
                         else:
                             break
                 f3.close()
@@ -136,12 +161,109 @@ def get_update_bgp_stack_archive():
             load_stack.append(i)
 
     load_stack.sort(key = lambda x: x.split("/")[5]) #sort by the name of the archive
-    log = open("Data/BGP_url_stack",'w')
+    log = open("Data/BGP_url_stack_rcc",'w')
     for i in load_stack:
         log.write(i+"\n")
     log.close()
 
     return load_stack
+
+#A bug here
+def get_update_bgp_url_ROUTEVIEW():
+
+    #load stack
+    load_stack=[]
+    '''
+    f1= open("Data/BGP_url_stack_routeview","r")
+    for i in f1:
+        load_stack.append(i.rstrip("\n"))
+    #get only last line
+    f1.close()
+    return load_stack
+    f1= open("Data/BGP_url_stack_routeview","r")
+    #get only last line
+    last_line = f1.readlines()[-1]
+    f1.close()
+    x = last_line.split("/")
+    last_date_archive = x[5][8:16]
+    last_date_archive_year_month_day = last_date_archive
+    last_date_archive_year_month = last_date_archive[0:4]+"."+last_date_archive[4:6]
+    '''
+    last_date_archive="2007.10"
+    last_date_archive_hour="20071027.12"
+    #download list of collector
+    url = 'http://archive.routeviews.org'
+    urllib.request.urlretrieve(url, '../tmp/routeview_collector.html')
+
+    list_url=[]
+    f1= open("../tmp/routeview_collector.html","r")
+    for i in f1:
+        if "<A HREF=\"/" in i:
+            i = i.split("\"")
+            k = i[1]
+            name = i[1].replace("/", "")
+            if k == "/ipv6" or k=="/route-views3/bgpdata": #we don't need theses files
+                continue
+            url_collector = "http://archive.routeviews.org"+k
+            urllib.request.urlretrieve(url_collector, '../tmp/routeview_collector'+name+'.html')
+            f2= open('../tmp/routeview_collector'+name+'.html',"r")
+            list_of_date=[]
+            for l in f2:
+                if len(l)==211:
+                    date = l[80:87]
+                    if date>=last_date_archive:
+                        list_of_date.append(date)
+            f2.close()
+            os.remove('../tmp/routeview_collector'+name+'.html')
+            list_of_date.sort()
+            for date in list_of_date:
+                url = "http://archive.routeviews.org"+k+"/"+date+"/UPDATES/"
+                urllib.request.urlretrieve(url, '../tmp/routeview_collector'+name+date+'.html')
+                f3 = open('../tmp/routeview_collector'+name+date+'.html','r')
+                for m in f3:
+                    if len(m)==232:
+                        name_of_file = m[81:106]
+                        url = "http://archive.routeviews.org"+k+"/"+date+"/UPDATES/"+name_of_file
+                        list_url.append(url)
+                f3.close()
+                os.remove('../tmp/routeview_collector'+name+date+'.html')
+    f1.close()
+    os.remove("../tmp/routeview_collector.html")
+
+    for i in list_url:
+        if i not in load_stack:
+            load_stack.append(i)
+
+    load_stack.sort(key = lambda x: x.split("/")[6]) #sort by the name of the archive
+    log = open("Data/BGP_url_stack_routeview",'w')
+    for i in load_stack:
+        log.write(i+"\n")
+    log.close()
+
+    return load_stack
+
+##############################################################
+#  Download bgp archives + delete archives #
+##############################################################
+
+def download_bgp_archives(url_stack,date):
+    for i in range(len(url_stack)):
+        url = url_stack.pop(0)
+        date_bgp = url.split(".")
+        date_bgp = date_bgp[5]+date_bgp[6][0:2] #ex 2020040700 => 2020 04 07 00(heure)
+        date_consensus = date.split("-")
+        date_consensus = date_consensus[0]+""+date_consensus[1]+""+date_consensus[2]+""+date_consensus[3]
+        if date_bgp<date_consensus:
+            continue
+        elif date_bgp==date_consensus:
+            x = url.split(".")
+            urllib.request.urlretrieve(url, 'BGP_Archives/'+x[5]+x[6]+"-"+x[3][4:9]+"."+x[7])
+        elif date_bgp>date_consensus:
+            url_stack.insert(0,url)
+            break
+
+def delete_bgp_archives():
+    os.system("rm BGP_Archives/*")
 
 ##############################################################
 #  extract tor ip and put all the possible prefix in hashmap #
@@ -253,38 +375,42 @@ def delete_data_to_db(prefix,asn_to_rib):
 
 def internet_mapping(hash_map,date):
     #print("Begin of Internet Mapping")
-    G = nx.Graph()
-    ASN_TO_RIB = {} #dict of dict
-
-    var = date.split("-")
-    before = datetime(int(var[0]), int(var[1]), int(var[2]), int(var[3]), int(var[4]), int(var[5]))
-    after = datetime(int(var[0]), int(var[1]), int(var[2]), int(var[3]), int(var[4]), int(var[5])) + timedelta(hours=1)
-
-    stream = pybgpstream.BGPStream(
-        from_time=str(before),until_time=str(after),
-        collectors=["route-views2","route-views3","route-views4","route-views6","route-views.eqix","route-views.isc","route-views.kixp","route-views.jinx","route-views.linx","route-views.telxatl","route-views.wide","route-views.sydney","route-views.saopaulo","route-views.nwax","route-views.perth","route-views.sg","route-views.sfmix","route-views.soxrs","route-views.chicago","route-views.napafrica","route-views.flix","route-views.chile","route-views.amsix","rrc01","rrc02","rrc03","rrc04","rrc05","rrc06","rrc07","rrc08","rrc09","rrc10","rrc11","rrc12","rrc13","rrc14","rrc15","rrc16","rrc18","rrc19","rrc20","rrc21","rrc22","rrc23"],
-        record_type="updates",
-    )
-
-    for elem in stream:
-        if(elem.type=='A'): #annoucement (BGP update)
-            ases = elem.fields["as-path"].split(" ")
-            prefix = elem.fields["prefix"]
-            if len(ases) > 0:
-                link_as_in_graph(ases,G)
-                if prefix_of_tor_relay(prefix,hash_map):
-                    add_data_to_db(ases,prefix,ASN_TO_RIB)
-        if(elem.type=='W'): #withdraw
-            prefix=elem.fields["prefix"]
-            if prefix_of_tor_relay(prefix,hash_map):
-                delete_data_to_db(prefix,ASN_TO_RIB)
+    for bgp_archive in os.listdir("BGP_Archives"):
+        data = os.popen("bgpdump BGP_Archives/"+bgp_archive).read()
+        data = data.split("\n\n") #split in block
+        for elem in data:
+            elem = elem.split("\n") #split by line
+            update = 0
+            withdraw = 0
+            prefix_list = []
+            ases_path = []
+            count=0
+            for line in elem:
+                count=count+1
+                if line[0:6]=="ASPATH":
+                    ases_path = line.split(" ")
+                    ases_path.pop(0)
+                    link_as_in_graph(ases_path,G)
+                if update or withdraw:
+                    prefix_list.append(line[2:len(line)])
+                if line[0:9]=="ANNOUNCE":
+                    update = 1
+                if line[0:9]=="WITHDRAW":
+                    withdraw = 1
+                if count==len(elem): #end of file
+                    for i in prefix_list:
+                        if update:
+                            if prefix_of_tor_relay(i,hash_map):
+                                add_data_to_db(ases_path,i,ASN_TO_RIB)
+                        if withdraw:
+                            if prefix_of_tor_relay(i,hash_map):
+                                delete_data_to_db(i,ASN_TO_RIB)
     return G,ASN_TO_RIB
     #print("End of stream")
     #print(ASN_TO_RIB)
     #print(len(G))
     #nx.draw(G, with_labels=True)
     #plt.show()
-
 ##############################################
 #   Calculate Resilient Score of Tor Relays  #
 ##############################################
@@ -333,7 +459,6 @@ def advertise_prefix(ases,prefix,Graph,DB):
                 queue.append([neighbour,x])
     return DB
 
-'''
 def advertise_prefix2(ases,prefix,Graph,DB):
     add_data_to_db_one_as(ases,prefix,DB)
     if is_it_best_route(ases,prefix,DB):
@@ -341,7 +466,6 @@ def advertise_prefix2(ases,prefix,Graph,DB):
             x = ases.copy()
             x.insert(0, i)
             advertise_prefix2(x,prefix,Graph,DB)
-'''
 
 def compute_score(Wrong_AS,prefix,DB2,G):
     #iter on all node to get asn
@@ -379,6 +503,8 @@ def computation_resilient_score_tor_relay(graph_db):
         for prefix in DB[AS]:
             if prefix not in list_prefix_in_DB:
                 list_prefix_in_DB.append(prefix)
+    if len(list_prefix_in_DB)==0:
+        print("Can't compute score because no BGP announcement about tor relay prefix")
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
         random_AS_10 = take_10_random_AS(Graph) #take 10 random AS => they will hijack the prefix
