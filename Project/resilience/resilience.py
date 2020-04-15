@@ -34,7 +34,7 @@ for filename in os.listdir("tor-consensuses-tar"):
     tar_list.append(filename)
 tar_list.sort()
 
-#bar = Bar('Computation of relay resilience', max=int(number_of_tar_file))
+only_at_begin = True
 result = open("../tmp/result", 'a')
 for filename in tar_list:
     if filename.endswith(".tar.xz"):
@@ -62,14 +62,21 @@ for filename in tar_list:
                 print("Computation of relay resilience of "+str(hour))
                 list_ip4_ip6=extract_tor_ip("tor-consensuses/"+str(filename)+"/"+str(day)+"/"+str(hour))
                 prefix_hash_map=hash_map_all_prefix(list_ip4_ip6)
+
+                if only_at_begin:
+                    add_rib_of_collector_to_db(prefix_hash_map)
+                    only_at_begin = False
+
                 internetgraph_routingdb= internet_mapping(prefix_hash_map,str(hour))
                 #print(len(internetgraph_routingdb[0]))
                 #print(internetgraph_routingdb[1])
                 #print(prefix_hash_map)
                 #break
                 resilient_score_tor_relay = computation_resilient_score_tor_relay(internetgraph_routingdb)
-
+                #break
                 delete_bgp_archives()
+
+                #break
             #break
         #break
         os.system("rm -rf tor-consensuses/"+str(filename))
