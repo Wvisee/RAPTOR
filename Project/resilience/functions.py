@@ -38,15 +38,22 @@ def clean():
     if len(os.listdir("../tmp")) != 0:
         os.system("rm ../tmp/*")
 
-#############################################################
-#  Functions that help managing error during file donwload  #
-#############################################################
+#########################################################
+#  small functions that help making the code clearer    #
+#########################################################
 
 def download_file(url,path):
     try:
         urllib.request.urlretrieve(url, path)
     except SocketError as e:
         download_file(url,path)
+
+def get_list_of_files_sorted_in_directory(dir):
+    list=[]
+    for filename in os.listdir(str(dir)):
+        list.append(filename)
+    list.sort()
+    return list
 
 ############################################################
 #   Download + update tar archives consensus of tor relays #
@@ -122,7 +129,7 @@ def get_update_bgp_url_RCC():
         load_stack.append(i.rstrip("\n"))
     #get only last line
     f1.close()
-    #return load_stack
+    return load_stack
     f1= open("Data/BGP_url_stack_rcc","r")
     #get only last line
     last_line = f1.readlines()[-1]
@@ -197,7 +204,7 @@ def get_update_bgp_url_ROUTEVIEW():
         load_stack.append(i.rstrip("\n"))
     #get only last line
     f1.close()
-    #return load_stack
+    return load_stack
     f1= open("Data/BGP_url_stack_routeview_history_download_archive","r")
     #get only last line
     dict={}
@@ -355,6 +362,7 @@ def get_url_archives_relation_as():
                 list.append(url_of_archive)
     f.close()
     os.remove("../tmp/as_relationships.html")
+    list.sort()
     return list
 
 def add_as_relation_archive_to_dict(url_of_as_relation_archive):
@@ -367,6 +375,18 @@ def add_as_relation_archive_to_dict(url_of_as_relation_archive):
             i = i.split("|")
             as_to_as = str(i[0])+"-"+str(i[1])
             AS_RELATION[as_to_as]=i[2].rstrip()
+
+def init_as_relation_in_dict(filename,url_relation_as):
+    #pop first elem of AS-relation and look if if is the good date => launch a function that translate the archives into dic
+    month_consensuses = filename[12:19]
+    as_relation_url = url_relation_as.pop(0)
+    as_relation_month = as_relation_url[57:61]+"-"+as_relation_url[61:63]
+    if month_consensuses==as_relation_month:
+        add_as_relation_archive_to_dict(as_relation_url)
+    else:
+        #no data about as relation this month => we will use the one of previous month
+        #we reinsert the url at the begin of the stack for the next right month
+        url_relation_as.insert(0,as_relation_url)
 
 ##############################################################
 #  add rib to G and db to Initialize the virtual internet    #
@@ -385,7 +405,9 @@ def add_rib_of_collector_to_db(hash_map):
     print("save graph")
     nx.write_gpickle(G, "G.p")
     '''
+    global ASN_TO_RIB
     ASN_TO_RIB = pickle.load( open( "ASN_TO_RIB.p", "rb" ) )
+    global G
     G = nx.read_gpickle("G.p")
 
 def download_rib_of_collector_of_tor_begin():
@@ -512,7 +534,8 @@ def add_ribs_to_db(hash_map):
                 as_path = elem[6]
             if type=="W":
                 if prefix_of_tor_relay(prefix,hash_map):
-                    delete_data_to_db(prefix,ASN_TO_RIB)
+                    continue
+                    #delete_data_to_db(prefix,ASN_TO_RIB)
             elif type=="A" or type=="B":
                 as_path = as_path.split(" ")
                 link_as_in_graph(as_path,G)
@@ -526,34 +549,19 @@ def add_ribs_to_db(hash_map):
 
 def extract_tor_ip(path_of_consensuses):
     list_ip = []
-    list_ip6 = []
     is_in_block=False
-    has_ip6=False
     ip=0
-    ip6=0
     for desc in open(path_of_consensuses,"r"):
         tab=desc.split(' ')
         if tab[0]=='r':
             ip=tab[6]
             is_in_block=True
-        if tab[0]=='a' and is_in_block:
-            has_ip6=True
-            ip6 = tab[1]
         if tab[0]=='s' and is_in_block :
-            ok=False
-            if "Guard" in tab: ok=True
-            if "Exit" in tab: ok=True
-            if ok:
+            if "Guard" in tab or "Exit" in tab:
                 if ip not in list_ip:
                     list_ip.append(ip)
-                if has_ip6:
-                    if ip6 not in list_ip6:
-                        list_ip6.append(ip6)
             is_in_block=False
-            has_ip6=False
     return list_ip
-    #print(len(list_ip))
-    #print(len(list_ip6))
 
 def hash_map_all_prefix(list_ip4):
     hash_map={}
@@ -602,70 +610,92 @@ def prefix_of_tor_relay(prefix,hash_map):
 def link_as_in_graph(ases,G):
     for i in range(len(ases)-1):
         if G.has_edge(ases[i],ases[i+1])==False:
-            G.add_edge(ases[i],ases[i+1])
-'''
-def add_data_to_db(as,prefix,asn_to_rib):
-    tmp = ases.copy()
-    for i in ases:
-        if not asn_to_rib.get(i):
-            asn_to_rib[i]={}
-        var = asn_to_rib[i]
-        if not var.get(prefix):
-            var[prefix]=[]
-        if tmp not in var[prefix]:
-            var[prefix].append(tmp.copy())
-        tmp.remove(i)
-'''
-def add_data_to_db_one_as(ases,prefix,asn_to_rib):
-    tmp = ases.copy()
-    i=ases[0]
-    if not asn_to_rib.get(i):
-        asn_to_rib[i]={}
-    var = asn_to_rib[i]
+            if ases[i]!=ases[i+1]:#we don't link one as with itself
+                G.add_edge(ases[i],ases[i+1])
+
+def add_data_to_db_one_as(ases,prefix,DB):
+    AS = ases[0]
+    if not DB.get(AS):
+        DB[AS]={}
+    var = DB[AS]
     if not var.get(prefix):
         var[prefix]=[]
-    if tmp not in var[prefix]:
-        var[prefix].append(tmp)
+    if ases not in var[prefix]:
+        var[prefix].append(ases)
 
-def delete_data_to_db(prefix,asn_to_rib):
+def delete_data_to_db(AS,prefix,asn_to_rib):
     for i in asn_to_rib:
         if prefix in i:
-            i.remove(prefix)
+            list_path = i.get(prefix)
+            for path in list_path:
+                if path[len(path)-1]==AS:
+                    list_path.remove(path)
 
-def internet_mapping(hash_map,date):
-    #print("Begin of Internet Mapping")
+def extract_as_prefix_from_bgp_archives(hash_map):
+
+    announcement_list = []
+    withdraw_list = []
+    count = 0
     for bgp_archive in os.listdir("BGP_Archives"):
+        print(count)
+        count += 1
         data = os.popen("python Programs/mrt2bgpdump.py BGP_Archives/"+bgp_archive).read()
         data = str(data).split("\n")
         for elem in data:
             elem=elem.split("|")
             if elem[0]=='': #empty list
                 continue
-            time = elem[1]
+            #time = elem[1]
             type = elem[2]
-            if type=="W":
-                annoucer = elem[3]
-                as_nb = elem[4]
-                prefix = elem[5]
-            else:
-                annoucer = elem[3]
-                as_nb = elem[4]
-                prefix = elem[5]
+            if type!="W":
                 as_path = elem[6]
+            annoucer = elem[3]
+            as_nb = elem[4]
+            prefix = elem[5]
             if type=="W":
                 if prefix_of_tor_relay(prefix,hash_map):
-                    delete_data_to_db(prefix,ASN_TO_RIB)
+                    if str(as_nb+"-"+prefix) in announcement_list:
+                        announcement_list.remove(str(as_nb+"-"+prefix))
+                    elif str(as_nb+"-"+prefix) not in withdraw_list:
+                            withdraw_list.append(str(as_nb+"-"+prefix))
             elif type=="A":
                 as_path = as_path.split(" ")
+                announcer = as_path[len(as_path)-1]
                 link_as_in_graph(as_path,G)
                 if prefix_of_tor_relay(prefix,hash_map):
-                    advertise_prefix([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
+                    if str(announcer+"-"+prefix) in withdraw_list:
+                        withdraw_list.remove(str(announcer+"-"+prefix))
+                        if str(announcer+"-"+prefix) not in announcement_list:
+                            announcement_list.append(str(announcer+"-"+prefix))
+                    elif str(announcer+"-"+prefix) not in announcement_list:
+                        announcement_list.append(str(announcer+"-"+prefix))
+
+    return announcement_list,withdraw_list
+
+def advertise_all_prefix(announcement_list,withdraw_list):
+    for i in withdraw_list:
+        i = i.split("-")
+        AS = i[0]
+        Prefix = i[1]
+        delete_data_to_db(AS,Prefix,ASN_TO_RIB)
+    for i in announcement_list:
+        print(i)
+        i = i.split("-")
+        AS = i[0]
+        Prefix = i[1]
+        advertise_prefix_new([AS],Prefix,G,ASN_TO_RIB)
+        break
+    '''
+    delete_data_to_db(prefix,ASN_TO_RIB)
+    start_time = time.time()
+    advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
+    print(prefix)
+    print(" --- %s seconds ---" % (time.time() - start_time))
+    for i in dict_of_as_prefix:
+        advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
+    '''
     return G,ASN_TO_RIB
-    #print("End of stream")
-    #print(ASN_TO_RIB)
-    #print(len(G))
-    #nx.draw(G, with_labels=True)
-    #plt.show()
+
 ##############################################
 #   Calculate Resilient Score of Tor Relays  #
 ##############################################
@@ -685,65 +715,97 @@ def take_50_random_AS(G):
         for AS in G.nodes():
             list_of_as.append(AS)
         return list_of_as
-'''
-def is_it_best_route(ases,prefix,DB):
-    AS_prefix_list = DB[ases[0]]
-    path_list = AS_prefix_list[prefix]
-    longest=9999999999999999999 #Normaly no path should be bigger than this.
-    for i in path_list:
-        if len(i) < longest:
-            longest=len(i)
-    return longest==len(ases)
-'''
-#bfs
-def advertise_prefix(ases,prefix,Graph,DB):
+
+def advertise_prefix_new(ases,prefix,Graph,DB):
     #print("begin "+str(ases)+" "+str(prefix))
     #print("length graph : "+str(len(Graph)))
+    already_announce={}
     queue = []     #Initialize a queue
-    visited = []
-    queue.append([ases[0],ases])
-    visited.append(ases[0])
+    queue.append(ases)
     while queue:
-        s = queue.pop(0)
-        add_data_to_db_one_as(s[1],prefix,DB)
-        for neighbour in Graph.neighbors(s[0]):
-            if neighbour not in visited:
-                x = s[1].copy()
+        path = queue.pop(0)
+        AS = path[0]
+        add_data_to_db_one_as(path,prefix,DB)
+        if BGP_PROCESS_is_best(path,prefix,DB):
+            for neighbour in Graph.neighbors(AS):
+                if len(path) > 1 and neighbour==path[1]: #we don't send update to the as that send us the update
+                    continue
+                if str(AS+"-"+neighbour) in already_announce:
+                    continue
+                already_announce[str(AS+"-"+neighbour)]=1
+                x = path.copy()
                 x.insert(0, neighbour)
-                visited.append(neighbour)
-                queue.append([neighbour,x])
+                queue.append(x)
     return DB
 
-def advertise_prefix2(ases,prefix,Graph,DB):
+def advertise_prefix_new2(ases,prefix,Graph,DB):
     #print("begin "+str(ases)+" "+str(prefix))
     #print("length graph : "+str(len(Graph)))
+    already_announce={}
     queue = []     #Initialize a queue
-    queue.append([ases[0],ases]) #ases is AS3, AS2, AS1 (from AS1)
+    queue.append(ases)
     while queue:
-        s = queue.pop(0)
-        add_data_to_db_one_as(s[1],prefix,DB)
-        if BGP_PROCESS_is_best(s[1],prefix,DB):
-            for neighbour in Graph.neighbors(s[0]):
-                x = s[1].copy()
+        path = queue.pop(0)
+        AS = path[0]
+        add_data_to_db_one_as(path,prefix,DB)
+        if BGP_PROCESS_is_best2(path,prefix,DB):
+            for neighbour in Graph.neighbors(AS):
+                if len(path) > 1 and neighbour==path[1]: #we don't send update to the as that send us the update
+                    continue
+                if str(AS+"-"+neighbour) in already_announce:
+                    continue
+                already_announce[str(AS+"-"+neighbour)]=1
+                x = path.copy()
                 x.insert(0, neighbour)
-                queue.append([neighbour,x])
+                queue.append(x)
     return DB
 
-def BGP_PROCESS_is_best(path,prefix,DB):
+def BGP_PROCESS_is_best2(path,prefix,DB):
+    #var = 0
     i = path[0]
     if DB.get(i):
         prefix_list = DB[i]
         if prefix_list.get(prefix):
             path_list = prefix_list[prefix]
+            #if len(path_list)>1:
+                #print(path_list)
             best_relation_path = get_best_relation_path(path_list,i)
+            #print(best_relation_path)
             shortest = 4294967296
             for x in best_relation_path:
                 if len(x) < shortest:
                     shortest=len(x)
+            #print(shortest)
             list_path_same_length = []
             for x in path_list:
                 if len(x) == shortest:
                     list_path_same_length.append(x)
+            #print(list_path_same_length)
+            true_path = 0
+            false_path = 0
+            return (path in list_path_same_length)
+
+def BGP_PROCESS_is_best(path,prefix,DB):
+    #var = 0
+    i = path[0]
+    if DB.get(i):
+        prefix_list = DB[i]
+        if prefix_list.get(prefix):
+            path_list = prefix_list[prefix]
+            #if len(path_list)>1:
+                #print(path_list)
+            best_relation_path = get_best_relation_path(path_list,i)
+            #print(best_relation_path)
+            shortest = 4294967296
+            for x in best_relation_path:
+                if len(x) < shortest:
+                    shortest=len(x)
+            #print(shortest)
+            list_path_same_length = []
+            for x in path_list:
+                if len(x) == shortest:
+                    list_path_same_length.append(x)
+            #print(list_path_same_length)
             true_path = 0
             false_path = 0
             return (path in list_path_same_length)
@@ -756,8 +818,7 @@ def get_best_relation_path(path_list,AS):
     for path in path_list:
         #print(path)
         if len(path)==1:
-            #prefix already hijacked
-            break
+            return [path]
         else:
             neighbour = path[1]
         #print(str(neighbour)+"-"+str(AS))
@@ -840,13 +901,19 @@ def computation_resilient_score_tor_relay(graph_db):
         print("Can't compute score because no IP prefix in BGP tables about tor relay")
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
+        prefix = "84.54.163.0/24"
         random_AS_50 = take_50_random_AS(Graph) #take 10 random AS => they will hijack the prefix
         True_AS_list = get_true_as_from_prefix(prefix)
         score=0
         for AS in random_AS_50: #Graph.nodes():
             if AS not in True_AS_list:
-                DB2 = advertise_prefix([AS],prefix,Graph,DB.copy())
+                print("ad")
+                start_time = time.time()
+                DB2 = advertise_prefix_new2([AS],prefix,Graph,DB.copy())
+                print(" --- %s seconds ---" % (time.time() - start_time))
                 score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
+                break
+        print(score)
         final_score = score/(len(G)-len(True_AS_list))
         print("prefix : "+str(prefix)+" , score : "+str(final_score))
         break
