@@ -7,10 +7,12 @@ from progress.bar import Bar
 from functions import *
 
 ##########################################################
-#0. Clean directories of files from previous computation #
+#0. Init/Clean directories of files from previous computation #
 ##########################################################
+print("Init directories and files")
+init()
 print("Clean directories")
-#clean()
+clean()
 
 #####################################
 #1. Update Tor Consensuses Archives #
@@ -52,7 +54,7 @@ for filename in tar_list: #iterate throught TOR consensuses archives by month
 
             for hour in hour_list:
                 print("Download BGP archives of "+str(hour))
-                #download_bgp_archives(url_stack,str(hour))
+                download_bgp_archives(url_stack,str(hour))
 
             print("Extract IP of relays from Tor network from "+str(filename)+"-"+str(day))
             list_day_ipv4 = []

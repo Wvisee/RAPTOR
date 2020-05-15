@@ -9,7 +9,6 @@ from progress.bar import Bar
 import networkx as nx
 import matplotlib.pyplot as plt
 import ipaddress
-import pybgpstream
 from random import *
 import subprocess
 import time
@@ -37,6 +36,26 @@ def clean():
         os.system("rm BGP_Archives/*")
     if len(os.listdir("../tmp")) != 0:
         os.system("rm ../tmp/*")
+
+def init():
+    if not os.path.isdir("tor-consensuses-tar"):
+        os.system("mkdir tor-consensuses-tar")
+    if not os.path.isfile("tor-consensuses-tar/last_changed"):
+        os.system("echo \"\" >> tor-consensuses-tar/last_changed")
+    if not os.path.isdir("../tmp"):
+        os.system("mkdir ../tmp")
+    if not os.path.isdir("BGP_Archives"):
+        os.system("mkdir BGP_Archives")
+    if not os.path.isdir("Data"):
+        os.system("mkdir Data")
+    if not os.path.isfile("Data/BGP_url_stack_rcc"):
+        os.system("echo \"\" >> Data/BGP_url_stack_rcc")
+    if not os.path.isfile("Data/BGP_url_stack_routeview"):
+        os.system("echo \"\" >> Data/BGP_url_stack_routeview")
+    if not os.path.isfile("Data/BGP_url_stack_routeview_history_download_archive"):
+        os.system("echo \"\" >> Data/BGP_url_stack_routeview_history_download_archive")
+    if not os.path.isdir("tor-consensuses"):
+        os.system("mkdir tor-consensuses")
 
 #########################################################
 #  small functions that help making the code clearer    #
@@ -129,15 +148,21 @@ def get_update_bgp_url_RCC():
         load_stack.append(i.rstrip("\n"))
     #get only last line
     f1.close()
-    return load_stack
+    #return load_stack
     f1= open("Data/BGP_url_stack_rcc","r")
     #get only last line
     last_line = f1.readlines()[-1]
     f1.close()
-    x = last_line.split("/")
-    last_date_archive = x[5][8:16]
-    last_date_archive_year_month_day = last_date_archive
-    last_date_archive_year_month = last_date_archive[0:4]+"."+last_date_archive[4:6]
+    if os.path.getsize("Data/BGP_url_stack_rcc")>1:
+        x = last_line.split("/")
+        last_date_archive = x[5][8:16]
+        last_date_archive_year_month_day = last_date_archive
+        last_date_archive_year_month = last_date_archive[0:4]+"."+last_date_archive[4:6]
+    else:
+        last_date_archive = "20071027" #creation of Tor network
+        last_date_archive_year_month_day = "20071027"
+        last_date_archive_year_month = "2007.10"
+
 
     #download list of collector
     url = 'https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/ris-raw-data'
@@ -187,6 +212,10 @@ def get_update_bgp_url_RCC():
         load_stack.append(i)
     load_stack = list(dict.fromkeys(load_stack)) #delete duplicate element
 
+    for i in load_stack:
+        if i=="":
+            load_stack.remove(i)
+
     load_stack.sort(key = lambda x: x.split("/")[5]) #sort by the name of the archive
     log = open("Data/BGP_url_stack_rcc",'w')
     for i in load_stack:
@@ -204,14 +233,15 @@ def get_update_bgp_url_ROUTEVIEW():
         load_stack.append(i.rstrip("\n"))
     #get only last line
     f1.close()
-    return load_stack
-    f1= open("Data/BGP_url_stack_routeview_history_download_archive","r")
-    #get only last line
+    #return load_stack
     dict={}
-    for i in f1:
-        i = i.split(" ")
-        dict[i[0]]=i[1].replace("\n","")
-    f1.close()
+    if os.path.getsize("Data/BGP_url_stack_routeview_history_download_archive")>1:
+        f1= open("Data/BGP_url_stack_routeview_history_download_archive","r")
+        #get only last line
+        for i in f1:
+            i = i.split(" ")
+            dict[i[0]]=i[1].replace("\n","")
+        f1.close()
 
     #download list of collector
     url = 'http://archive.routeviews.org'
@@ -233,10 +263,16 @@ def get_update_bgp_url_ROUTEVIEW():
             for l in f2:
                 if len(l)==211:
                     date = l[80:87]
-                    if date>=dict[k]:
-                        list_of_date.append(date)
-                    if date>dict[k]:
-                        dict[k]=date
+                    if dict.get(k):
+                        if date>=dict[k]:
+                            list_of_date.append(date)
+                        if date>dict[k]:
+                            dict[k]=date
+                    else:
+                        if date>="2007.10": #creation of Tor network
+                            list_of_date.append(date)
+                        if date>"2007.10":
+                            dict[k]=date
             f2.close()
             os.remove('../tmp/routeview_collector'+name+'.html')
             list_of_date.sort()
@@ -264,6 +300,10 @@ def get_update_bgp_url_ROUTEVIEW():
     for i in list_url:
         load_stack.append(i)
     load_stack = list(dict.fromkeys(load_stack)) #delete duplicate element
+
+    for i in load_stack:
+        if i=="":
+            load_stack.remove(i)
 
     load_stack.sort(key = lambda x: x.split("/")[-1]) #sort by the name of the archive
     log = open("Data/BGP_url_stack_routeview",'w')
