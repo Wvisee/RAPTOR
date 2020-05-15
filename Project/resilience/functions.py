@@ -413,8 +413,25 @@ def add_as_relation_archive_to_dict(url_of_as_relation_archive):
     for i in f:
         if i[0].isdigit():
             i = i.split("|")
-            as_to_as = str(i[0])+"-"+str(i[1])
-            AS_RELATION[as_to_as]=i[2].rstrip()
+            AS1 = i[0]
+            AS2 = i[1]
+            Relation = int(i[2].rstrip())
+            if not AS_RELATION.get(AS1):
+                AS_RELATION[AS1]={}
+                dict = AS_RELATION[AS1]
+                dict[1] = []
+                dict[0] = []
+                dict[-1] = []
+            if not AS_RELATION.get(AS2):
+                AS_RELATION[AS2]={}
+                dict = AS_RELATION[AS2]
+                dict[1] = []
+                dict[0] = []
+                dict[-1] = []
+            dict_as1 = AS_RELATION[AS1]
+            dict_as1[Relation].append(AS2)
+            dict_as2 = AS_RELATION[AS2]
+            dict_as2[-Relation].append(AS1)
 
 def init_as_relation_in_dict(filename,url_relation_as):
     #pop first elem of AS-relation and look if if is the good date => launch a function that translate the archives into dic
@@ -723,17 +740,9 @@ def advertise_all_prefix(announcement_list,withdraw_list):
         i = i.split("-")
         AS = i[0]
         Prefix = i[1]
+        start_time = time.time()
         advertise_prefix_new([AS],Prefix,G,ASN_TO_RIB)
-        break
-    '''
-    delete_data_to_db(prefix,ASN_TO_RIB)
-    start_time = time.time()
-    advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
-    print(prefix)
-    print(" --- %s seconds ---" % (time.time() - start_time))
-    for i in dict_of_as_prefix:
-        advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
-    '''
+        print(" --- %s seconds ---" % (time.time() - start_time))
     return G,ASN_TO_RIB
 
 ##############################################
@@ -744,8 +753,8 @@ def take_50_random_AS(G):
     lenght = len(G) #number of AS
     list_of_as = []
     count = 0
-    if lenght >= 50:
-        while count<50:
+    if lenght >= 2:
+        while count<2:
             t = choice(list(G.nodes()))
             if t not in list_of_as:
                 count = count + 1
@@ -778,123 +787,54 @@ def advertise_prefix_new(ases,prefix,Graph,DB):
                 queue.append(x)
     return DB
 
-def advertise_prefix_new2(ases,prefix,Graph,DB):
-    #print("begin "+str(ases)+" "+str(prefix))
-    #print("length graph : "+str(len(Graph)))
-    already_announce={}
-    queue = []     #Initialize a queue
-    queue.append(ases)
-    while queue:
-        path = queue.pop(0)
-        AS = path[0]
-        add_data_to_db_one_as(path,prefix,DB)
-        if BGP_PROCESS_is_best2(path,prefix,DB):
-            for neighbour in Graph.neighbors(AS):
-                if len(path) > 1 and neighbour==path[1]: #we don't send update to the as that send us the update
-                    continue
-                if str(AS+"-"+neighbour) in already_announce:
-                    continue
-                already_announce[str(AS+"-"+neighbour)]=1
-                x = path.copy()
-                x.insert(0, neighbour)
-                queue.append(x)
-    return DB
-
-def BGP_PROCESS_is_best2(path,prefix,DB):
-    #var = 0
-    i = path[0]
-    if DB.get(i):
-        prefix_list = DB[i]
-        if prefix_list.get(prefix):
-            path_list = prefix_list[prefix]
-            #if len(path_list)>1:
-                #print(path_list)
-            best_relation_path = get_best_relation_path(path_list,i)
-            #print(best_relation_path)
-            shortest = 4294967296
-            for x in best_relation_path:
-                if len(x) < shortest:
-                    shortest=len(x)
-            #print(shortest)
-            list_path_same_length = []
-            for x in path_list:
-                if len(x) == shortest:
-                    list_path_same_length.append(x)
-            #print(list_path_same_length)
-            true_path = 0
-            false_path = 0
-            return (path in list_path_same_length)
-
 def BGP_PROCESS_is_best(path,prefix,DB):
-    #var = 0
     i = path[0]
     if DB.get(i):
         prefix_list = DB[i]
         if prefix_list.get(prefix):
             path_list = prefix_list[prefix]
-            #if len(path_list)>1:
-                #print(path_list)
             best_relation_path = get_best_relation_path(path_list,i)
-            #print(best_relation_path)
+            if (path not in best_relation_path):
+                return False
             shortest = 4294967296
             for x in best_relation_path:
                 if len(x) < shortest:
                     shortest=len(x)
-            #print(shortest)
-            list_path_same_length = []
-            for x in path_list:
-                if len(x) == shortest:
-                    list_path_same_length.append(x)
-            #print(list_path_same_length)
-            true_path = 0
-            false_path = 0
-            return (path in list_path_same_length)
+            if len(path)==shortest:
+                return True
+            else:
+                return False
 
 def get_best_relation_path(path_list,AS):
-    #print(path_list)
-    customer_path=[]
-    peer_path=[]
-    provider_path=[]
-    for path in path_list:
-        #print(path)
-        if len(path)==1:
-            return [path]
-        else:
-            neighbour = path[1]
-        #print(str(neighbour)+"-"+str(AS))
-        if (str(neighbour)+"-"+str(AS)) in AS_RELATION:
-            relation = AS_RELATION[(str(neighbour)+"-"+str(AS))]
-            #print(relation)
-            #print(relation==str(0))
-            if relation==str(0):
-                #print("ok")
-                if path not in peer_path:
-                    #print("ok")
-                    peer_path.append(path)
-                    #print(peer_path)
-            if relation==str(-1):
-                if path not in provider_path:
-                    provider_path.append(path)
-        #print(str(AS)+"-"+str(neighbour))
-        if (str(AS)+"-"+str(neighbour)) in AS_RELATION:
-            relation = AS_RELATION[(str(AS)+"-"+str(neighbour))]
-            #print(relation)
-            if relation==str(0):
-                if path not in peer_path:
-                    peer_path.append(path)
-            if relation==str(-1):
-                if path not in customer_path:
-                    customer_path.append(path)
-    if len(customer_path) > 0:
-        #print(customer_path)
-        return customer_path
-    elif len(peer_path) > 0:
-        #print(peer_path)
-        return peer_path
-    elif len(provider_path) > 0:
-        #print(provider_path)
-        return provider_path
-    return path_list
+    if AS_RELATION.get(AS):
+        x = AS_RELATION[AS]
+        customer_list = []
+        peer_list = []
+        provider_list = []
+        not0 = True
+        not1 = True
+        for i in path_list:
+            if len(i)==1:
+                return [i]
+            neighbor = i[1]
+            if neighbor in x[-1]:
+                customer_list.append(i)
+                not0 = False
+                not1 = False
+            elif not0 and neighbor in x[0]:
+                peer_list.append(i)
+                not1 = False
+            elif not1 and neighbor in x[1]:
+                provider_list.append(i)
+        if len(customer_list)>0:
+            return customer_list
+        if len(peer_list)>0:
+            return peer_list
+        if len(provider_list)>0:
+            return provider_list
+        return path_list
+    else: #no data about AS relations
+        return path_list
 
 def compute_score(Wrong_AS,prefix,DB2,G,True_AS_list):
     #iter on all node to get asn
@@ -941,22 +881,19 @@ def computation_resilient_score_tor_relay(graph_db):
         print("Can't compute score because no IP prefix in BGP tables about tor relay")
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
-        prefix = "84.54.163.0/24"
         random_AS_50 = take_50_random_AS(Graph) #take 10 random AS => they will hijack the prefix
         True_AS_list = get_true_as_from_prefix(prefix)
         score=0
         for AS in random_AS_50: #Graph.nodes():
             if AS not in True_AS_list:
-                print("ad")
                 start_time = time.time()
-                DB2 = advertise_prefix_new2([AS],prefix,Graph,DB.copy())
+                DB2 = advertise_prefix_new([AS],prefix,Graph,DB.copy())
                 print(" --- %s seconds ---" % (time.time() - start_time))
+                start_time = time.time()
                 score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
-                break
-        print(score)
+                print(" --- %s seconds score fun ---" % (time.time() - start_time))
         final_score = score/(len(G)-len(True_AS_list))
         print("prefix : "+str(prefix)+" , score : "+str(final_score))
-        break
 
 def get_true_as_from_prefix(prefix):
     #print(prefix)
