@@ -749,14 +749,14 @@ def advertise_all_prefix(announcement_list,withdraw_list):
 #   Calculate Resilient Score of Tor Relays  #
 ##############################################
 
-def take_50_random_AS(G):
+def take_50_random_AS(G,True_AS):
     lenght = len(G) #number of AS
     list_of_as = []
     count = 0
-    if lenght >= 2:
-        while count<2:
+    if lenght >= 10:
+        while count<10:
             t = choice(list(G.nodes()))
-            if t not in list_of_as:
+            if t not in list_of_as and t not in True_AS:
                 count = count + 1
                 list_of_as.append(t)
         return list_of_as
@@ -881,18 +881,17 @@ def computation_resilient_score_tor_relay(graph_db):
         print("Can't compute score because no IP prefix in BGP tables about tor relay")
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
-        random_AS_50 = take_50_random_AS(Graph) #take 10 random AS => they will hijack the prefix
         True_AS_list = get_true_as_from_prefix(prefix)
+        random_AS_50 = take_50_random_AS(Graph,True_AS_list) #take 10 random AS => they will hijack the prefix
         score=0
         for AS in random_AS_50: #Graph.nodes():
-            if AS not in True_AS_list:
-                start_time = time.time()
-                DB2 = advertise_prefix_new([AS],prefix,Graph,DB.copy())
-                print(" --- %s seconds ---" % (time.time() - start_time))
-                start_time = time.time()
-                score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
-                print(" --- %s seconds score fun ---" % (time.time() - start_time))
-        final_score = score/(len(G)-len(True_AS_list))
+            start_time = time.time()
+            DB2 = advertise_prefix_new([AS],prefix,Graph,DB.copy())
+            print(" --- %s seconds ---" % (time.time() - start_time))
+            start_time = time.time()
+            score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
+            print(" --- %s seconds score fun ---" % (time.time() - start_time))
+        final_score = score/len(G)
         print("prefix : "+str(prefix)+" , score : "+str(final_score))
 
 def get_true_as_from_prefix(prefix):
