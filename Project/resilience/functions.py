@@ -891,7 +891,7 @@ def computation_resilient_score_tor_relay(graph_db):
             start_time = time.time()
             score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
             print(" --- %s seconds score fun ---" % (time.time() - start_time))
-        final_score = score/len(G)
+        final_score = score/len(random_AS_50)
         print("prefix : "+str(prefix)+" , score : "+str(final_score))
 
 def get_true_as_from_prefix(prefix):
