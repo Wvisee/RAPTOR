@@ -53,6 +53,11 @@ for filename in tar_list: #iterate throught TOR consensuses archives by month
                 print("Monitoring of BGP announcement")
                 date = str(filename).split("-")
                 date = date[1]+"-"+date[2]+"-"+str(day)
+
+                result = open("output",'a')
+                result.write(str(hour)+"\n")
+                result.close()
+
                 monitoring(prefix_hash_map,date)
 
                 #break

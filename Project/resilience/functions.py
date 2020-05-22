@@ -449,25 +449,31 @@ def init_as_relation_in_dict(filename,url_relation_as):
 #  add rib to G and db to Initialize the virtual internet    #
 ##############################################################
 
-def add_rib_of_collector_to_db(hash_map):
-    '''
-    print("Download")
-    download_rib_of_collector_of_tor_begin()
-    print("Graph")
-    create_graph()
-    print("Add to db")
-    add_ribs_to_db(hash_map)
-    print("save asnrib")
-    pickle.dump(ASN_TO_RIB, open( "ASN_TO_RIB.p", "wb" ))
-    print("save graph")
-    nx.write_gpickle(G, "G.p")
-    '''
-    global ASN_TO_RIB
-    ASN_TO_RIB = pickle.load( open( "ASN_TO_RIB.p", "rb" ) )
-    global G
-    G = nx.read_gpickle("G.p")
+def add_rib_of_collector_to_db(prefix_hash_map):
+    if not os.path.isfile("G.p") and not os.path.isfile("ASN_TO_RIB.p"):
+        print("Download")
+        download_rib_of_collector_of_tor_begin()
+        print("Graph")
+        create_graph()
+        print("Extract from BGP archives RIB prefix announced by AS")
+        announcement_list,withdraw_list = extract_as_prefix_from_bgp_archives(prefix_hash_map,"RIB_2007_10_27")
+        print("Initialize vitual network with RIBs")
+        Graph,Db = advertise_all_prefix(announcement_list,withdraw_list)
+        print("save asnrib")
+        pickle.dump(Db, open( "ASN_TO_RIB.p", "wb" ))
+        print("save graph")
+        nx.write_gpickle(Graph, "G.p")
+    else:
+        global ASN_TO_RIB
+        ASN_TO_RIB = pickle.load( open( "ASN_TO_RIB.p", "rb" ) )
+        global G
+        G = nx.read_gpickle("G.p")
 
 def download_rib_of_collector_of_tor_begin():
+    if not os.path.isdir("RIB_2007_10_27"):
+        os.system("mkdir RIB_2007_10_27")
+    if not os.path.isfile("RIB_2007_10_27/history"):
+        os.system("echo \"\" >> RIB_2007_10_27/history")
 
     list_metadata = []
     metadata = open("RIB_2007_10_27/history", 'r')
@@ -559,6 +565,8 @@ def download_rib_of_collector_of_tor_begin():
     os.system("rm RIB_2007_10_27/history")
     metadata = open("RIB_2007_10_27/history", 'w')
     for x in list_metadata:
+        if x=="":
+            continue
         metadata.write(x+"\n")
     metadata.close()
 
@@ -597,7 +605,7 @@ def add_ribs_to_db(hash_map):
                 as_path = as_path.split(" ")
                 link_as_in_graph(as_path,G)
                 if prefix_of_tor_relay(prefix,hash_map):
-                    advertise_prefix([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
+                    advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
 
 
 ##############################################################
@@ -638,7 +646,7 @@ def hash_map_all_prefix(list_ip4):
         for number in range(17,25): #17 to 24
             var = i.split(".")
             addr = var[0]+"."+var[1]+"."+var[2]+".0/"+str(number)
-            hash_map[addr]=True
+            hash_map[addr]=i
         '''
         for number in range(25,33): #25 to 32
             var = str(i)+"/"+str(number)
@@ -688,15 +696,15 @@ def delete_data_to_db(AS,prefix,asn_to_rib):
                 if path[len(path)-1]==AS:
                     list_path.remove(path)
 
-def extract_as_prefix_from_bgp_archives(hash_map):
+def extract_as_prefix_from_bgp_archives(hash_map,dir):
 
     announcement_list = []
     withdraw_list = []
     count = 0
-    for bgp_archive in os.listdir("BGP_Archives"):
+    for bgp_archive in os.listdir(dir):
         print(count)
         count += 1
-        data = os.popen("python Programs/mrt2bgpdump.py BGP_Archives/"+bgp_archive).read()
+        data = os.popen("python Programs/mrt2bgpdump.py "+dir+"/"+bgp_archive).read()
         data = str(data).split("\n")
         for elem in data:
             elem=elem.split("|")
@@ -715,7 +723,7 @@ def extract_as_prefix_from_bgp_archives(hash_map):
                         announcement_list.remove(str(as_nb+"-"+prefix))
                     elif str(as_nb+"-"+prefix) not in withdraw_list:
                             withdraw_list.append(str(as_nb+"-"+prefix))
-            elif type=="A":
+            elif type=="A" or type=="B":
                 as_path = as_path.split(" ")
                 announcer = as_path[len(as_path)-1]
                 link_as_in_graph(as_path,G)
@@ -735,6 +743,7 @@ def advertise_all_prefix(announcement_list,withdraw_list):
         AS = i[0]
         Prefix = i[1]
         delete_data_to_db(AS,Prefix,ASN_TO_RIB)
+    print("len : "+str(len(announcement_list)))
     for i in announcement_list:
         print(i)
         i = i.split("-")
@@ -841,11 +850,13 @@ def compute_score(Wrong_AS,prefix,DB2,G,True_AS_list):
     #go to table and look which route is prefer
     #in 2 var
     hijacked = 0
+    count = 0
     for i in G.nodes():
         if i not in True_AS_list:
             if DB2.get(i):
                 prefix_list = DB2[i]
                 if prefix_list.get(prefix):
+                    count += 1
                     path_list = prefix_list[prefix]
                     best_relation_path = get_best_relation_path(path_list,i)
                     shortest = 4294967296
@@ -859,16 +870,16 @@ def compute_score(Wrong_AS,prefix,DB2,G,True_AS_list):
                     true_path = 0
                     false_path = 0
                     for x in list_path_same_length:
-                        if x[len(x)-1] != Wrong_AS:
+                        if x[-1] == Wrong_AS:
                             false_path += 1
                         else:
                             true_path += 1
                     score = true_path/(false_path+true_path)
                     hijacked += score
-    return (len(G)-hijacked)/len(G)
+    return hijacked/count
 
 
-def computation_resilient_score_tor_relay(graph_db):
+def computation_resilient_score_tor_relay(graph_db,hash_map):
     Graph=graph_db[0]
     DB =graph_db[1]
     #get all prefix in a list
@@ -878,21 +889,21 @@ def computation_resilient_score_tor_relay(graph_db):
             if prefix not in list_prefix_in_DB:
                 list_prefix_in_DB.append(prefix)
     if len(list_prefix_in_DB)==0:
-        print("Can't compute score because no IP prefix in BGP tables about tor relay")
+        result = open("output",'a')
+        result.write("Computation not possible\n")
+        result.close()
     #main
     for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
         True_AS_list = get_true_as_from_prefix(prefix)
         random_AS_50 = take_50_random_AS(Graph,True_AS_list) #take 10 random AS => they will hijack the prefix
         score=0
         for AS in random_AS_50: #Graph.nodes():
-            start_time = time.time()
             DB2 = advertise_prefix_new([AS],prefix,Graph,DB.copy())
-            print(" --- %s seconds ---" % (time.time() - start_time))
-            start_time = time.time()
             score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
-            print(" --- %s seconds score fun ---" % (time.time() - start_time))
         final_score = score/len(random_AS_50)
-        print("prefix : "+str(prefix)+" , score : "+str(final_score))
+        result = open("output",'a')
+        result.write(str(hash_map[prefix])+" "+str(str(prefix))+" "+str(final_score)+"\n")
+        result.close()
 
 def get_true_as_from_prefix(prefix):
     #print(prefix)

@@ -52,6 +52,12 @@ for filename in tar_list: #iterate throught TOR consensuses archives by month
         for day in day_list:
             hour_list = get_list_of_files_sorted_in_directory("tor-consensuses/"+str(filename)+"/"+day)
 
+            date = str(filename).split("-")
+            date = date[1]+"-"+date[2]+"-"+str(day)
+            result = open("output",'a')
+            result.write(str(date)+"\n")
+            result.close()
+
             for hour in hour_list:
                 print("Download BGP archives of "+str(hour))
                 download_bgp_archives(url_stack,str(hour))
@@ -67,21 +73,20 @@ for filename in tar_list: #iterate throught TOR consensuses archives by month
             prefix_hash_map=hash_map_all_prefix(list_day_ipv4) #returns all prefix of all ip extracted from /17-/24
 
             if only_at_begin: #init the virtual network with the BGP tables available on TOR first day
-                print("Initialize vitual network with Ribs")
                 add_rib_of_collector_to_db(prefix_hash_map)
                 only_at_begin = False
 
             print("Extract from BGP archives prefix announced by AS")
-            announcement_list,withdraw_list = extract_as_prefix_from_bgp_archives(prefix_hash_map)
+            announcement_list,withdraw_list = extract_as_prefix_from_bgp_archives(prefix_hash_map,"BGP_Archives")
 
             print("Injection the BGP update in the virtual network")
             internetgraph_routingdb = advertise_all_prefix(announcement_list,withdraw_list)
 
             print("Computing the resilience of the Tor relays")
-            resilient_score_tor_relay = computation_resilient_score_tor_relay(internetgraph_routingdb)
+            resilient_score_tor_relay = computation_resilient_score_tor_relay(internetgraph_routingdb,prefix_hash_map)
             #break
-            #delete_bgp_archives()
-            break
-        break
+            delete_bgp_archives()
+            #break
+        #break
         os.system("rm -rf tor-consensuses/"+str(filename))
-    break
+    #break

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
-from datetime import datetime
-from datetime import timedelta
+import datetime
+#import timedelta
 import os
 import urllib.request
 import fileinput
@@ -16,16 +16,8 @@ from socket import error as SocketError
 import errno
 import pickle
 
-####################
-#  Global Variable #
-####################
-
-G = nx.Graph()  #graph of internet
-ASN_TO_RIB = {} #dict of dict to store BGP table of ASes
-AS_RELATION= {}
-
-def init_dict_relation():
-    AS_RELATION= {}
+#Global variable
+time_window = {}
 
 ########################
 # Management functions #
@@ -474,7 +466,11 @@ def monitoring(hash_map,date):
             elem=elem.split("|")
             if elem[0]=='': #empty list
                 continue
-            #time = elem[1]
+            k = elem[1] # 10/27/07 12:25:00
+            k1 = k.split(" ")
+            k = k1[0].split("/")
+            date = str(k[0]+"/"+k[1]+"/20"+k[2]+" "+k1[1])  # 10/27/2007 12:25:00
+
             type = elem[2]
             if type!="W":
                 as_path = elem[6]
@@ -501,6 +497,14 @@ def monitoring(hash_map,date):
                     else:
                         if announcer not in true_list: #origin check
                             #print(announcer+" "+prefix+" "+str(true_list))
+
+                            #add to timestamp window
+                            if not time_window.get(prefix):
+                                time_window[prefix]={}
+                            list = time_window[prefix]
+                            list[announcer]= time.mktime(datetime.datetime.strptime(date, "%m/%d/%Y %H:%M:%S").timetuple())
+
+                            #add to count db
                             if not wrong_announcement.get(prefix):
                                 wrong_announcement[prefix] = {}
                             dict = wrong_announcement[prefix]
@@ -508,6 +512,18 @@ def monitoring(hash_map,date):
                                 dict[announcer] = 1
                             else:
                                 dict[announcer] += 1
+                        else:
+                            if time_window.get(prefix):
+                                dict = time_window[prefix]
+                                for AS_bad in dict:
+                                    current_timestamp = time.mktime(datetime.datetime.strptime(date, "%m/%d/%Y %H:%M:%S").timetuple())
+                                    if current_timestamp-dict[AS_bad] <= 3600: #60sec * 60 min = 1 hour
+                                        result = open("output",'a')
+                                        result.write("Time "+prefix+" "+AS_bad+" "+announcer+" "+str(current_timestamp-dict[AS_bad])+"\n")
+                                        result.close()
+                                    else:
+                                        dict.remove(AS_bad)
+
     for prefix in all_announcement:
         nb = all_announcement[prefix]
         if wrong_announcement.get(prefix):
@@ -516,6 +532,6 @@ def monitoring(hash_map,date):
             dict = {}
         for AS in dict:
             if dict[AS]/nb <= 0.0025:
-                print("Frequency : "+prefix+" : "+AS+" : "+str(dict[AS])+"/"+str(nb)+" = "+str(dict[AS]/nb))
-            elif dict[AS]/nb <= 0.065:
-                print("Time : "+prefix+" : "+AS+" : "+str(dict[AS])+"/"+str(nb)+" = "+str(dict[AS]/nb))
+                result = open("output",'a')
+                result.write("Frequency : "+prefix+" : "+AS+" : "+str(dict[AS])+"/"+str(nb)+" = "+str(dict[AS]/nb)+"\n")
+                result.close()
