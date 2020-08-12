@@ -5,7 +5,6 @@ import os
 import urllib.request
 import fileinput
 import sys
-from progress.bar import Bar
 import networkx as nx
 import matplotlib.pyplot as plt
 import ipaddress
@@ -15,6 +14,9 @@ import time
 from socket import error as SocketError
 import errno
 import pickle
+import json
+import copy
+import gc
 
 ####################
 #  Global Variable #
@@ -22,9 +24,18 @@ import pickle
 
 G = nx.Graph()  #graph of internet
 ASN_TO_RIB = {} #dict of dict to store BGP table of ASes
-AS_RELATION= {}
+AS_RELATION= {} #dict containing the AS relation
+
+def init_graph():
+    global G
+    G = nx.Graph()
+
+def init_db():
+    global ASN_TO_RIB
+    ASN_TO_RIB = {}
 
 def init_dict_relation():
+    global AS_RELATION
     AS_RELATION= {}
 
 ########################
@@ -32,10 +43,12 @@ def init_dict_relation():
 ########################
 
 def clean():
-    if len(os.listdir("BGP_Archives")) != 0:
-        os.system("rm BGP_Archives/*")
+    if len(os.listdir("rib")) != 0:
+        os.system("rm rib/*")
     if len(os.listdir("../tmp")) != 0:
         os.system("rm ../tmp/*")
+    if len(os.listdir("tor-consensuses")) != 0:
+        os.system("rm -rf tor-consensuses/*")
 
 def init():
     if not os.path.isdir("tor-consensuses-tar"):
@@ -44,18 +57,18 @@ def init():
         os.system("echo \"\" >> tor-consensuses-tar/last_changed")
     if not os.path.isdir("../tmp"):
         os.system("mkdir ../tmp")
-    if not os.path.isdir("BGP_Archives"):
-        os.system("mkdir BGP_Archives")
-    if not os.path.isdir("Data"):
-        os.system("mkdir Data")
-    if not os.path.isfile("Data/BGP_url_stack_rcc"):
-        os.system("echo \"\" >> Data/BGP_url_stack_rcc")
-    if not os.path.isfile("Data/BGP_url_stack_routeview"):
-        os.system("echo \"\" >> Data/BGP_url_stack_routeview")
-    if not os.path.isfile("Data/BGP_url_stack_routeview_history_download_archive"):
-        os.system("echo \"\" >> Data/BGP_url_stack_routeview_history_download_archive")
     if not os.path.isdir("tor-consensuses"):
         os.system("mkdir tor-consensuses")
+    if not os.path.isdir("rib"):
+        os.system("mkdir rib")
+
+#from https://stackoverflow.com/questions/36965507/writing-a-dictionary-to-a-text-file
+def dic_to_file(exDict,name="db.txt"):
+    with open(name, 'w') as file:
+        for i in exDict:
+            file.write(i+"-\n")
+            file.write(json.dumps(exDict[i])) # use `json.loads` to do the reverse
+            file.write("\n")
 
 #########################################################
 #  small functions that help making the code clearer    #
@@ -112,6 +125,8 @@ def update_tor_archive():
             #print(name+" "+date)
             #we look if consensuses are already donwloaded by checking the metadata, if not we download them
             if name not in dict_metadata:
+                if name == "consensuses-2007-10.tar.xz": #We don't take the first consensus has we are only interested in first day of the month (here we start the 27)
+                    continue
                 print("download "+name+" "+date)
                 url2 = 'https://collector.torproject.org/archive/relay-descriptors/consensuses/'+name
                 download_file(url2,'tor-consensuses-tar/'+name)
@@ -133,254 +148,46 @@ def update_tor_archive():
 #   Return a sorted list of all BGP archives url           #
 ############################################################
 
-def get_update_bgp_stack_archive():
-    print("Update rcc url stack")
-    x = get_update_bgp_url_RCC()
-    print("Update routeview url stack")
-    y = get_update_bgp_url_ROUTEVIEW()
-    return x,y
+def DOWNLOAD_RIB(date):
+    print("Download RIB RCC")
+    Download_RIB_RCC(date)
 
-def get_update_bgp_url_RCC():
-    #load stack
-    load_stack=[]
-    f1= open("Data/BGP_url_stack_rcc","r")
-    for i in f1:
-        load_stack.append(i.rstrip("\n"))
-    #get only last line
-    f1.close()
-    #return load_stack
-    f1= open("Data/BGP_url_stack_rcc","r")
-    #get only last line
-    last_line = f1.readlines()[-1]
-    f1.close()
-    if os.path.getsize("Data/BGP_url_stack_rcc")>1:
-        x = last_line.split("/")
-        last_date_archive = x[5][8:16]
-        last_date_archive_year_month_day = last_date_archive
-        last_date_archive_year_month = last_date_archive[0:4]+"."+last_date_archive[4:6]
-    else:
-        last_date_archive = "20071027" #creation of Tor network
-        last_date_archive_year_month_day = "20071027"
-        last_date_archive_year_month = "2007.10"
-
-
-    #download list of collector
+def Download_RIB_RCC(date_asked):
+    list_url = []
     url = 'https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/ris-raw-data'
     download_file(url,'../tmp/ripe_ncc_collector.html')
-
-    list_url=[]
     f1= open("../tmp/ripe_ncc_collector.html","r")
     for i in f1:
         if "href=\"http://data.ris.ripe.net/rrc" in i:
             i = i.split("href=\"http://data.ris.ripe.net/rrc")
             z = str(i[1][0])+str(i[1][1])
             url_collector = "http://data.ris.ripe.net/rrc"+z
-            urllib.request.urlretrieve(url_collector, '../tmp/ripe_ncc_collector_'+z+'.html')
-            f2= open('../tmp/ripe_ncc_collector_'+z+'.html',"r")
-            list_of_date=[]
-            for l in f2:
-                if "href=" in l:
-                    var = l.split("href=\"")[1]
-                    date = var[0:7]
-                    boo = var[0].isdigit()
-
-                    if boo and date>=last_date_archive_year_month:
-                        list_of_date.append(date)
-            f2.close()
-            os.remove('../tmp/ripe_ncc_collector_'+z+'.html')
-            list_of_date.sort()
-            for date in list_of_date:
-                url = 'http://data.ris.ripe.net/rrc'+z+'/'+date+"/"
-                download_file(url,'../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
-                f3 = open('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html','r')
-                for m in f3:
-                    if len(m)==233:
-                        if m[84]=="u": #it means that it is an update
-                            name_of_archive = m[84:108]
-                            name_of_archive2 = name_of_archive[8:16]
-                            if name_of_archive2 >= last_date_archive_year_month_day:
-                                url = 'http://data.ris.ripe.net/rrc'+z+'/'+date+"/"+name_of_archive
-                                list_url.append(url)
-                        else:
-                            break
-                f3.close()
-                os.remove('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
+            download_file(url_collector,'../tmp/ripe_ncc_collector_'+z+'.html')
+            f3= open('../tmp/ripe_ncc_collector_'+z+'.html',"r")
+            #we will look at all month >= 2007.10
+            for l in f3:
+                if len(l)==197:
+                    date = l[90:97]
+                    if date == date_asked:
+                        url_collector = "http://data.ris.ripe.net/rrc"+z+"/"+date+"/"
+                        download_file(url_collector,'../tmp/ripe_ncc_collector_'+z+'_'+date+'.html')
+                        f2= open('../tmp/ripe_ncc_collector_'+z+'_'+date+'.html',"r")
+                        for m in f2:
+                            if len(m)==229:
+                                if m[84]=="b": #it means that it is an bview rib
+                                    name_of_archive = m[84:106]
+                                    name_of_archive2 = name_of_archive[6:14]
+                                    date_without_point = date.replace('.', '')
+                                    if name_of_archive2 == (date_without_point+"01"):
+                                        url = "http://data.ris.ripe.net/rrc"+z+"/"+date+"/"+name_of_archive
+                                        list_url.append(url)
+                                        year = date_without_point[0:4]
+                                        month = date_without_point[4:6]
+                                        print("download file rcc"+z+" "+year+"/"+month+"/"+name_of_archive)
+                                        download_file(url,'rib/'+year+"_"+month+"_"+z+"_"+name_of_archive)
+                        f2.close()
+            f3.close()
     f1.close()
-    os.remove("../tmp/ripe_ncc_collector.html")
-
-    for i in list_url:
-        load_stack.append(i)
-    load_stack = list(dict.fromkeys(load_stack)) #delete duplicate element
-
-    for i in load_stack:
-        if i=="":
-            load_stack.remove(i)
-
-    load_stack.sort(key = lambda x: x.split("/")[5]) #sort by the name of the archive
-    log = open("Data/BGP_url_stack_rcc",'w')
-    for i in load_stack:
-        log.write(i+"\n")
-    log.close()
-
-    return load_stack
-
-def get_update_bgp_url_ROUTEVIEW():
-
-    #load stack
-    load_stack=[]
-    f1= open("Data/BGP_url_stack_routeview","r")
-    for i in f1:
-        load_stack.append(i.rstrip("\n"))
-    #get only last line
-    f1.close()
-    #return load_stack
-    dict={}
-    if os.path.getsize("Data/BGP_url_stack_routeview_history_download_archive")>1:
-        f1= open("Data/BGP_url_stack_routeview_history_download_archive","r")
-        #get only last line
-        for i in f1:
-            i = i.split(" ")
-            dict[i[0]]=i[1].replace("\n","")
-        f1.close()
-
-    #download list of collector
-    url = 'http://archive.routeviews.org'
-    download_file(url,'../tmp/routeview_collector.html')
-
-    list_url=[]
-    f1= open("../tmp/routeview_collector.html","r")
-    for i in f1:
-        if "<A HREF=\"/" in i:
-            i = i.split("\"")
-            k = i[1]
-            name = i[1].replace("/", "")
-            if k == "/ipv6" or k=="/route-views3/bgpdata" or k=="/route-views6/bgpdata": #we don't need theses files
-                continue
-            url_collector = "http://archive.routeviews.org"+k
-            download_file(url_collector,'../tmp/routeview_collector'+name+'.html')
-            f2= open('../tmp/routeview_collector'+name+'.html',"r")
-            list_of_date=[]
-            for l in f2:
-                if len(l)==211:
-                    date = l[80:87]
-                    if dict.get(k):
-                        if date>=dict[k]:
-                            list_of_date.append(date)
-                        if date>dict[k]:
-                            dict[k]=date
-                    else:
-                        if date>="2007.10": #creation of Tor network
-                            list_of_date.append(date)
-                        if date>"2007.10":
-                            dict[k]=date
-            f2.close()
-            os.remove('../tmp/routeview_collector'+name+'.html')
-            list_of_date.sort()
-            for date in list_of_date:
-                url = "http://archive.routeviews.org"+k+"/"+date+"/UPDATES/"
-                download_file(url,'../tmp/routeview_collector'+name+date+'.html')
-                f3 = open('../tmp/routeview_collector'+name+date+'.html','r')
-                for m in f3:
-                    if len(m)==232:
-                        name_of_file = m[81:106]
-                        url = "http://archive.routeviews.org"+k+"/"+date+"/UPDATES/"+name_of_file
-                        list_url.append(url)
-                f3.close()
-                os.remove('../tmp/routeview_collector'+name+date+'.html')
-    f1.close()
-    os.remove("../tmp/routeview_collector.html")
-
-    #update history_download_archive
-    f1= open("Data/BGP_url_stack_routeview_history_download_archive","w")
-    #get only last line
-    for i in dict:
-        f1.write(i+" "+dict[i]+"\n")
-    f1.close()
-
-    for i in list_url:
-        load_stack.append(i)
-    load_stack = list(dict.fromkeys(load_stack)) #delete duplicate element
-
-    for i in load_stack:
-        if i=="":
-            load_stack.remove(i)
-
-    load_stack.sort(key = lambda x: x.split("/")[-1]) #sort by the name of the archive
-    log = open("Data/BGP_url_stack_routeview",'w')
-    for i in load_stack:
-        log.write(i+"\n")
-    log.close()
-
-    return load_stack
-
-##############################################################
-#  Download bgp archives + delete archives #
-##############################################################
-
-def download_bgp_archives(url_stack,date):
-    print("Download rcc archives")
-    download_bgp_archives_rcc(url_stack[0],date)
-    print("Download routeview archives")
-    download_bgp_archives_routeview(url_stack[1],date)
-
-def download_bgp_archives_rcc(url_stack,date):
-    for i in range(len(url_stack)):
-        url = url_stack.pop(0)
-        date_bgp = url.split(".")
-        date_bgp = date_bgp[5]+date_bgp[6][0:2] #ex 2020040700 => 2020 04 07 00(heure)
-        date_consensus = date.split("-")
-        date_consensus = date_consensus[0]+""+date_consensus[1]+""+date_consensus[2]+""+date_consensus[3]
-        if date_bgp<date_consensus:
-            continue
-        elif date_bgp==date_consensus:
-            x = url.split(".")
-            download_file(url,'BGP_Archives/'+x[5]+x[6]+"-"+x[3][4:9]+"."+x[7])
-        elif date_bgp>date_consensus:
-            url_stack.insert(0,url)
-            break
-
-def download_bgp_archives_routeview(url_stack,date):
-    for i in range(len(url_stack)):
-        url = url_stack.pop(0)
-        date_bgp = url.split("/")
-        if date_bgp[3]=="bgpdata": #or date_bgp[3]=="route-views6": #doesn't seems to be real bgp update data
-            continue
-        date_url = date_bgp[-1]
-        date_url = date_url.split(".")
-        date_url = date_url[1]+""+date_url[2][0:2] #date_url
-
-        date_consensus = date.split("-")
-        date_consensus = date_consensus[0]+""+date_consensus[1]+""+date_consensus[2]+""+date_consensus[3] #date_consensus
-
-        url_before = url.split("/")
-        result=""
-        for k in range(len(url_before)-1):
-            result= result+url_before[k]+"/"
-        path = "../tmp/"+str(url_before[3])+"_"+str(url_before[4])+"_"+str(url_before[5])
-        if not os.path.isfile(path):
-            download_file(result,path)
-
-        if date_url<date_consensus:
-            f1=open(path,"r")
-            lines = f1.readlines()
-            for nb in range(0, len(lines)):
-                if len(lines[nb])==232:
-                    name_of_file = lines[nb][81:106]
-                    if name_of_file==url_before[-1]:
-                        if len(lines[nb+1])==232:
-                            date_of_file = lines[nb+1][81:106]
-                            date_of_file = date_of_file.split(".")
-                            date_of_file = date_of_file[1]+""+date_of_file[2][0:2]
-                            if date_of_file==date_consensus:
-                                download_file(result,'BGP_Archives/'+""+str(url_before[3])+"_"+str(url_before[4])+"_"+str(url_before[5])+"_"+str(url_before[-1]))
-            f1.close()
-        elif date_url==date_consensus:
-            download_file(url,'BGP_Archives/'+""+str(url_before[3])+"_"+str(url_before[4])+"_"+str(url_before[5])+"_"+str(url_before[-1]))
-        else:
-            break
-
-def delete_bgp_archives():
-    os.system("rm BGP_Archives/*")
 
 ##############################################################
 #           Get archives of relation AS by Caida             #
@@ -397,7 +204,7 @@ def get_url_archives_relation_as():
         if len(i)==135:
             name = i[52:75]
             date = name[0:6]
-            if date >= "200710": #beginning of Tor network
+            if date >= "201511" and date[4:6]=="11": #beginning of Tor network
                 url_of_archive = 'http://data.caida.org/datasets/as-relationships/serial-1/'+name
                 list.append(url_of_archive)
     f.close()
@@ -434,179 +241,52 @@ def add_as_relation_archive_to_dict(url_of_as_relation_archive):
             dict_as2[-Relation].append(AS1)
 
 def init_as_relation_in_dict(filename,url_relation_as):
+    init_dict_relation()
+    print("AS RELATION BEFORE = "+str(len(AS_RELATION)))
     #pop first elem of AS-relation and look if if is the good date => launch a function that translate the archives into dic
     month_consensuses = filename[12:19]
     as_relation_url = url_relation_as.pop(0)
     as_relation_month = as_relation_url[57:61]+"-"+as_relation_url[61:63]
     if month_consensuses==as_relation_month:
+        print("AS relation date = "+str(as_relation_url))
         add_as_relation_archive_to_dict(as_relation_url)
     else:
         #no data about as relation this month => we will use the one of previous month
         #we reinsert the url at the begin of the stack for the next right month
         url_relation_as.insert(0,as_relation_url)
+    print("AS RELATION AFTER = "+str(len(AS_RELATION)))
+
 
 ##############################################################
 #  add rib to G and db to Initialize the virtual internet    #
 ##############################################################
 
 def add_rib_of_collector_to_db(prefix_hash_map):
-    if not os.path.isfile("G.p") and not os.path.isfile("ASN_TO_RIB.p"):
-        print("Download")
-        download_rib_of_collector_of_tor_begin()
-        print("Graph")
-        create_graph()
-        print("Extract from BGP archives RIB prefix announced by AS")
-        announcement_list,withdraw_list = extract_as_prefix_from_bgp_archives(prefix_hash_map,"RIB_2007_10_27")
-        print("Initialize vitual network with RIBs")
-        Graph,Db = advertise_all_prefix(announcement_list,withdraw_list)
-        print("save asnrib")
-        pickle.dump(Db, open( "ASN_TO_RIB.p", "wb" ))
-        print("save graph")
-        nx.write_gpickle(Graph, "G.p")
-    else:
-        global ASN_TO_RIB
-        ASN_TO_RIB = pickle.load( open( "ASN_TO_RIB.p", "rb" ) )
-        global G
-        G = nx.read_gpickle("G.p")
 
-def download_rib_of_collector_of_tor_begin():
-    if not os.path.isdir("RIB_2007_10_27"):
-        os.system("mkdir RIB_2007_10_27")
-    if not os.path.isfile("RIB_2007_10_27/history"):
-        os.system("echo \"\" >> RIB_2007_10_27/history")
+    init_graph()
+    init_db()
 
-    list_metadata = []
-    metadata = open("RIB_2007_10_27/history", 'r')
-    for x in metadata:
-        list_metadata.append(x.rstrip("\n"))
-    metadata.close()
+    print("G BEFORE = "+str(len(G)))
+    print("DB BEFORE = "+str(len(ASN_TO_RIB)))
 
-    list_url=[]
-    #rrc
-    url = 'https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/ris-raw-data'
-    download_file(url,'../tmp/ripe_ncc_collector.html')
-    f1= open("../tmp/ripe_ncc_collector.html","r")
-    for i in f1:
-        if "href=\"http://data.ris.ripe.net/rrc" in i:
-            i = i.split("href=\"http://data.ris.ripe.net/rrc")
-            z = str(i[1][0])+str(i[1][1])
+    print("Graph")
+    create_graph()
 
-            #look if 2007.10 is in collector
-            url_collector = "http://data.ris.ripe.net/rrc"+z
-            download_file(url_collector,'../tmp/ripe_ncc_collector_'+z+'.html')
-            f3= open('../tmp/ripe_ncc_collector_'+z+'.html',"r")
-            var = False
-            for l in f3:
-                if "2007.10" in l:
-                    var = True
-            f3.close()
-            if not var:
-                #print(url_collector)
-                continue
+    print("Extract from BGP archives RIB prefix announced by AS")
+    announcement_list,withdraw_list = extract_as_prefix_from_bgp_archives(prefix_hash_map,"rib")
 
-            url_collector = "http://data.ris.ripe.net/rrc"+z+"/2007.10/"
-            download_file(url_collector,'../tmp/ripe_ncc_collector_'+z+'.html')
-            f2= open('../tmp/ripe_ncc_collector_'+z+'.html',"r")
-            for m in f2:
-                if len(m)==229:
-                    if m[84]=="b": #it means that it is an bview rib
-                        name_of_archive = m[84:106]
-                        name_of_archive2 = name_of_archive[6:14]
-                        if name_of_archive2 == "20071027":
-                            url = "http://data.ris.ripe.net/rrc"+z+"/2007.10/"+name_of_archive
-                            list_url.append(url)
-                            break #we only take the last rib table, it is the first one we see in the file
-            f2.close()
-    f1.close()
-    #routeview
-    url = 'http://archive.routeviews.org'
-    download_file(url,'../tmp/routeview_collector.html')
-    f1= open("../tmp/routeview_collector.html","r")
-    for i in f1:
-        if "<A HREF=\"/" in i:
-            i = i.split("\"")
-            k = i[1]
-            name = i[1].replace("/", "")
-            if k == "/ipv6" or k=="/route-views3/bgpdata" or k=="/route-views6/bgpdata": #we don't need theses files
-                continue
+    print("Initialize vitual network with RIBs")
+    advertise_all_prefix(announcement_list.copy(),withdraw_list)
 
-            #look if 2007.10 is in collector
-            url_collector = "http://archive.routeviews.org"+k
-            download_file(url_collector,'../tmp/routeview_collector'+name+'.html')
-            f3= open('../tmp/routeview_collector'+name+'.html',"r")
-            var = False
-            for l in f3:
-                if "2007.10" in l:
-                    var = True
-            f3.close()
-            if not var:
-                continue
+    print("G AFTER = "+str(len(G)))
+    print("DB AFTER = "+str(len(ASN_TO_RIB)))
 
-            url_collector = "http://archive.routeviews.org"+k+"/2007.10/RIBS/"
-            download_file(url_collector,'../tmp/routeview_collector'+name+'.html')
-            f2 = open('../tmp/routeview_collector'+name+'.html','r')
-            tab = []
-            for m in f2:
-                if "20071027" in m:
-                    tab.append(m)
-            f2.close()
-            m = tab[-1]
-            name_of_file = m[81:102]
-            url = "http://archive.routeviews.org"+k+"/2007.10/RIBS/"+name_of_file
-            list_url.append(url)
-    f1.close()
-
-    for i in list_url:
-        if i not in list_metadata:
-            z = i.split("/")
-            download_file(i,'RIB_2007_10_27/'+z[3])
-            list_metadata.append(i)
-
-    os.system("rm RIB_2007_10_27/history")
-    metadata = open("RIB_2007_10_27/history", 'w')
-    for x in list_metadata:
-        if x=="":
-            continue
-        metadata.write(x+"\n")
-    metadata.close()
+    return announcement_list
 
 def create_graph():
     for i in AS_RELATION:
         link = i.split("-")
         link_as_in_graph(link,G)
-
-def add_ribs_to_db(hash_map):
-    for rib_archive in os.listdir("RIB_2007_10_27"):
-        print(rib_archive)
-        if rib_archive=="history":
-            continue
-        data = os.popen("python Programs/mrt2bgpdump.py RIB_2007_10_27/"+rib_archive).read()
-        data = str(data).split("\n")
-        for elem in data:
-            elem=elem.split("|")
-            if elem[0]=='': #empty list
-                continue
-            time = elem[1]
-            type = elem[2]
-            if type=="W": #withdraw
-                annoucer = elem[3]
-                as_nb = elem[4]
-                prefix = elem[5]
-            elif type=="A" or type=="B": #annoucement, Table
-                annoucer = elem[3]
-                as_nb = elem[4]
-                prefix = elem[5]
-                as_path = elem[6]
-            if type=="W":
-                if prefix_of_tor_relay(prefix,hash_map):
-                    continue
-                    #delete_data_to_db(prefix,ASN_TO_RIB)
-            elif type=="A" or type=="B":
-                as_path = as_path.split(" ")
-                link_as_in_graph(as_path,G)
-                if prefix_of_tor_relay(prefix,hash_map):
-                    advertise_prefix_new([as_path[len(as_path)-1]],prefix,G,ASN_TO_RIB)
-
 
 ##############################################################
 #  extract tor ip and put all the possible prefix in hashmap #
@@ -630,33 +310,13 @@ def extract_tor_ip(path_of_consensuses):
 
 def hash_map_all_prefix(list_ip4):
     hash_map={}
-    #list_ipv6 = list_ip4_ip6[1]
     #IPV4
     for i in list_ip4:
-        '''
-        for number in range(0,9): #0 to 8
-            var = i.split(".")
-            addr = var[0]+".0.0.0/"+str(number)
-            hash_map[addr]=True
-        for number in range(9,17): #9 to 16
-            var = i.split(".")
-            addr = var[0]+"."+var[1]+".0.0/"+str(number)
-            hash_map[addr]=True
-        '''
         for number in range(17,25): #17 to 24
             var = i.split(".")
             addr = var[0]+"."+var[1]+"."+var[2]+".0/"+str(number)
             hash_map[addr]=i
-        '''
-        for number in range(25,33): #25 to 32
-            var = str(i)+"/"+str(number)
-            hash_map[var]=True
-        #print(hash_map)
-        '''
     return hash_map
-    #IPV6
-    #for i in list_ipv6:
-    #break
 
 ##################################
 #   Do a mapping of Internet     #
@@ -688,6 +348,12 @@ def add_data_to_db_one_as(ases,prefix,DB):
     if ases not in var[prefix]:
         var[prefix].append(ases)
 
+def delete_path_to_db(path,prefix,DB):
+    AS = path[0]
+    table = DB[AS]
+    path_list = table[prefix]
+    path_list.remove(path)
+
 def delete_data_to_db(AS,prefix,asn_to_rib):
     for i in asn_to_rib:
         if prefix in i:
@@ -697,7 +363,6 @@ def delete_data_to_db(AS,prefix,asn_to_rib):
                     list_path.remove(path)
 
 def extract_as_prefix_from_bgp_archives(hash_map,dir):
-
     announcement_list = []
     withdraw_list = []
     count = 0
@@ -734,16 +399,9 @@ def extract_as_prefix_from_bgp_archives(hash_map,dir):
                             announcement_list.append(str(announcer+"-"+prefix))
                     elif str(announcer+"-"+prefix) not in announcement_list:
                         announcement_list.append(str(announcer+"-"+prefix))
-
     return announcement_list,withdraw_list
 
 def advertise_all_prefix(announcement_list,withdraw_list):
-    for i in withdraw_list:
-        i = i.split("-")
-        AS = i[0]
-        Prefix = i[1]
-        delete_data_to_db(AS,Prefix,ASN_TO_RIB)
-    print("len : "+str(len(announcement_list)))
     for i in announcement_list:
         print(i)
         i = i.split("-")
@@ -752,18 +410,17 @@ def advertise_all_prefix(announcement_list,withdraw_list):
         start_time = time.time()
         advertise_prefix_new([AS],Prefix,G,ASN_TO_RIB)
         print(" --- %s seconds ---" % (time.time() - start_time))
-    return G,ASN_TO_RIB
 
 ##############################################
 #   Calculate Resilient Score of Tor Relays  #
 ##############################################
 
-def take_50_random_AS(G,True_AS):
+def take_200_random_AS(G,True_AS):
     lenght = len(G) #number of AS
     list_of_as = []
     count = 0
-    if lenght >= 10:
-        while count<10:
+    if lenght >= 100:
+        while count<100:
             t = choice(list(G.nodes()))
             if t not in list_of_as and t not in True_AS:
                 count = count + 1
@@ -775,8 +432,6 @@ def take_50_random_AS(G,True_AS):
         return list_of_as
 
 def advertise_prefix_new(ases,prefix,Graph,DB):
-    #print("begin "+str(ases)+" "+str(prefix))
-    #print("length graph : "+str(len(Graph)))
     already_announce={}
     queue = []     #Initialize a queue
     queue.append(ases)
@@ -802,17 +457,36 @@ def BGP_PROCESS_is_best(path,prefix,DB):
         prefix_list = DB[i]
         if prefix_list.get(prefix):
             path_list = prefix_list[prefix]
-            best_relation_path = get_best_relation_path(path_list,i)
-            if (path not in best_relation_path):
-                return False
-            shortest = 4294967296
-            for x in best_relation_path:
-                if len(x) < shortest:
-                    shortest=len(x)
-            if len(path)==shortest:
+            if len(path_list)==1: # we just add a path to the db, if the len==1 it is the only one so it's TRUE
                 return True
+            best_relation_path = get_best_relation_path(path_list.copy(),i)
+            if len(best_relation_path)==0:
+                print("error best_relation_path = 0")
+            elif len(best_relation_path)==1:
+                if (path not in best_relation_path):
+                    delete_path_to_db(path,prefix,DB)
+                    return False
+                elif (path in best_relation_path):
+                    path_list.copy().remove(path)
+                    old_path = path_list[0]
+                    delete_path_to_db(old_path,prefix,DB)
+                    return True
+                else:
+                    print("error")
+            elif len(best_relation_path)==2:
+                best_relation_path.remove(path)
+                old_path = best_relation_path[0] #we get the other path in the DB
+                if len(path)<len(old_path):
+                    delete_path_to_db(old_path,prefix,DB)
+                    return True
+                elif len(path)>len(old_path):
+                    delete_path_to_db(path,prefix,DB)
+                    return False
+                else:
+                    delete_path_to_db(old_path,prefix,DB)
+                    return True
             else:
-                return False
+                print("error : best_relation_path length is "+str(len(best_relation_path)))
 
 def get_best_relation_path(path_list,AS):
     if AS_RELATION.get(AS):
@@ -851,6 +525,7 @@ def compute_score(Wrong_AS,prefix,DB2,G,True_AS_list):
     #in 2 var
     hijacked = 0
     count = 0
+    wtf_count= 0
     for i in G.nodes():
         if i not in True_AS_list:
             if DB2.get(i):
@@ -858,52 +533,90 @@ def compute_score(Wrong_AS,prefix,DB2,G,True_AS_list):
                 if prefix_list.get(prefix):
                     count += 1
                     path_list = prefix_list[prefix]
-                    best_relation_path = get_best_relation_path(path_list,i)
-                    shortest = 4294967296
-                    for x in best_relation_path:
-                        if len(x) < shortest:
-                            shortest=len(x)
-                    list_path_same_length = []
-                    for x in path_list:
-                        if len(x) == shortest:
-                            list_path_same_length.append(x)
+
                     true_path = 0
                     false_path = 0
-                    for x in list_path_same_length:
-                        if x[-1] == Wrong_AS:
-                            false_path += 1
-                        else:
-                            true_path += 1
-                    score = true_path/(false_path+true_path)
-                    hijacked += score
+                    if len(path_list) > 1:
+                        print("path_list > 1")
+                    path = path_list[0]
+                    as_announcing = path[-1]
+                    if as_announcing==Wrong_AS:
+                        #print("Wrong")
+                        false_path += 1
+                        score = true_path/(false_path+true_path)
+                        hijacked += score
+                    elif as_announcing in True_AS_list:
+                        #print("True")
+                        true_path += 1
+                        score = true_path/(false_path+true_path)
+                        hijacked += score
+                    else:
+                        print("error")
+                        print("count = "+str(count)+" / wtf_count = "+str(wtf_count))
+                        print("as_choosen = "+str(as_announcing)+" / "+"Wrong_AS = "+str(Wrong_AS)+" / "+"True_AS_list = "+str(True_AS_list))
+                        #dic_to_file(DB2)
+                        exit()
+                        wtf_count+=1
     return hijacked/count
 
 
-def computation_resilient_score_tor_relay(graph_db,hash_map):
-    Graph=graph_db[0]
-    DB =graph_db[1]
+def computation_resilient_score_tor_relay(announcement_list,hash_map):
     #get all prefix in a list
-    list_prefix_in_DB = []
-    for AS in DB:
-        for prefix in DB[AS]:
-            if prefix not in list_prefix_in_DB:
-                list_prefix_in_DB.append(prefix)
-    if len(list_prefix_in_DB)==0:
+    dict_prefix_as_annoucing = {}
+    for i in announcement_list:
+        x = i.split("-")
+        if dict_prefix_as_annoucing.get(x[1]): #if the prefix is announce by 2 AS we store the 2 AS for the prefix in a list
+            dict_prefix_as_annoucing[x[1]].append(x[0])
+        else:
+            dict_prefix_as_annoucing[x[1]] = [x[0]]
+    if len(announcement_list)==0:
         result = open("output",'a')
         result.write("Computation not possible\n")
         result.close()
     #main
-    for prefix in list_prefix_in_DB: #iterate on all prefix (we have to calculate the score for each one of them)
-        True_AS_list = get_true_as_from_prefix(prefix)
-        random_AS_50 = take_50_random_AS(Graph,True_AS_list) #take 10 random AS => they will hijack the prefix
-        score=0
-        for AS in random_AS_50: #Graph.nodes():
-            DB2 = advertise_prefix_new([AS],prefix,Graph,DB.copy())
-            score = score + compute_score(AS,prefix,DB2,Graph,True_AS_list)
-        final_score = score/len(random_AS_50)
-        result = open("output",'a')
-        result.write(str(hash_map[prefix])+" "+str(str(prefix))+" "+str(final_score)+"\n")
-        result.close()
+    store_score = {}
+
+    store_list_random_as = {}
+    for prefix in dict_prefix_as_annoucing:
+        True_AS = dict_prefix_as_annoucing[prefix]
+        random_AS_200 = take_200_random_AS(G,True_AS) #take 10 random AS => they will hijack the prefix
+        #print(len(random_AS_200)) #100
+        store_list_random_as[prefix] = random_AS_200
+
+    global ASN_TO_RIB
+    pickle.dump(ASN_TO_RIB, open("ASN_TO_RIB.p", "wb" ))
+    ASN_TO_RIB = 0
+    gc.collect()
+
+    for i in range(0,100):
+        print("--- Prefix n°"+str(i))
+        #DB_hijacked = copy.deepcopy(ASN_TO_RIB)
+        DB_hijacked = pickle.load( open("ASN_TO_RIB.p", "rb" ) )
+        for prefix in dict_prefix_as_annoucing: #Graph.nodes():
+            AS = store_list_random_as[prefix].pop() #list goes down ok
+            True_AS = dict_prefix_as_annoucing[prefix]
+            if AS in True_AS:
+                print("error : AS==True_AS")
+            #print(AS)
+            #print(True_AS)
+            advertise_prefix_new([AS],prefix,G,DB_hijacked)
+            score = compute_score(AS,prefix,DB_hijacked,G,True_AS)
+            if not store_score.get(str(prefix)):
+                #print("error : computation_resilience")
+                store_score[str(prefix)] = {}
+            as_to_score = store_score[str(prefix)]
+            as_to_score[AS] = score
+        DB_hijacked = 0
+        gc.collect()
+    result = open("output",'a')
+    for prefix in store_score:
+        score = 0
+        for AS in store_score[prefix]:
+            as_to_score = store_score[str(prefix)]
+            score = score + as_to_score[AS]
+        final_score = score/100
+        result.write(str(dict_prefix_as_annoucing[prefix])+" "+str(hash_map[prefix])+" "+str(str(prefix))+" "+str(final_score)+"\n")
+    result.close()
 
 def get_true_as_from_prefix(prefix):
     #print(prefix)
