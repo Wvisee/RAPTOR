@@ -204,7 +204,7 @@ def get_url_archives_relation_as():
         if len(i)==135:
             name = i[52:75]
             date = name[0:6]
-            if date >= "201511" and date[4:6]=="11": #beginning of Tor network
+            if date >= "200711": #beginning of Tor network
                 url_of_archive = 'http://data.caida.org/datasets/as-relationships/serial-1/'+name
                 list.append(url_of_archive)
     f.close()
